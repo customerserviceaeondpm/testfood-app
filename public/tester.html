@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js"></script>
+  <style>
+    :root { --primary-color: #6366f1; --bg-color: #f8fafc; }
+    body { background-color: var(--bg-color); font-family: 'Plus Jakarta Sans', sans-serif; padding-bottom: 40px; }
+    .header-section { background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: white; padding: 30px; border-radius: 0 0 25px 25px; }
+    .main-card { background: white; border-radius: 20px; padding: 24px; margin-top: -30px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+    .item-row { border: 1px solid #f1f5f9; padding: 15px; margin-bottom: 15px; border-radius: 16px; background: #fff; border-left: 5px solid #6366f1; }
+    .sig-wrapper { border: 2px solid #f1f5f9; background: #fff; border-radius: 16px; height: 180px; position: relative; overflow: hidden; }
+    #padMOD { width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+    .star-rating { display: flex; flex-direction: row-reverse; gap: 8px; justify-content: flex-end; }
+    .star-rating input { display: none; }
+    .star-rating label { cursor: pointer; width: 25px; height: 25px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23cbd5e1'%3E%3Cpath d='M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z'/%3E%3C/svg%3E"); background-size: contain; }
+    .star-rating input:checked ~ label { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23f59e0b'%3E%3Cpath d='M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z'/%3E%3C/svg%3E"); }
+    .section-title { font-weight: 700; color: var(--primary-color); margin-bottom: 12px; font-size: 0.8rem; text-transform: uppercase; }
+  </style>
+</head>
+<body>
+
+<div class="header-section text-center">
+  <h4 class="fw-bold m-0">FORM TEST FOOD</h4>
+  <p class="small opacity-75 m-0">AEON DP Mall</p>
+</div>
+
+<div class="container">
+  <div class="main-card">
+    <div class="row g-2 mb-3">
+      <div class="col-6"><label class="small fw-bold">Tanggal</label><input type="date" id="tanggal" class="form-control"></div>
+      <div class="col-6"><label class="small fw-bold">Shift</label><select id="waktu" class="form-select"><option value="PAGI">PAGI</option><option value="SORE">SORE</option></select></div>
+    </div>
+    
+    <div class="mb-3">
+      <label class="small fw-bold">Penanggung Jawab (MOD)</label>
+      <select id="mod" class="form-select">
+        <option value="" disabled selected>Pilih MOD...</option>
+        <option value="Riza Teguh Iman S.">Riza Teguh Iman S.</option>
+        <option value="Fachruzi">Fachruzi</option>
+        <option value="Rizki Setiawan">Rizki Setiawan</option>
+        <option value="Aryandhi Purnomo A.">Aryandhi Purnomo A.</option>
+      </select>
+    </div>
+
+    <div class="section-title mt-3">Daftar Tester</div>
+    <div class="row g-2 mb-2">
+      <div class="col-6"><input type="text" id="tester1" class="form-control form-control-sm" placeholder="Tester 1"></div>
+      <div class="col-6"><input type="text" id="tester2" class="form-control form-control-sm" placeholder="Tester 2"></div>
+    </div>
+    <div class="row g-2 mb-3">
+      <div class="col-6"><input type="text" id="tester3" class="form-control form-control-sm" placeholder="Tester 3"></div>
+      <div class="col-6"><input type="text" id="tester4" class="form-control form-control-sm" placeholder="Tester 4"></div>
+    </div>
+
+    <button class="btn btn-warning w-100 mb-2 fw-bold shadow-sm" onclick="loadPIC()">📥 AMBIL DATA PRODUK DARI PIC</button>
+    <button class="btn btn-outline-dark btn-sm w-100 mb-4" onclick="addItemManual()">+ Tambah Produk Manual</button>
+
+    <div class="row g-2 mb-3">
+      <div class="col-6">
+        <button class="btn btn-success w-100 btn-sm shadow-sm" onclick="simpanDraft()">💾 SIMPAN DRAFT</button>
+      </div>
+      <div class="col-6">
+        <button class="btn btn-info w-100 btn-sm shadow-sm text-white" onclick="panggilRevisi()">🔄 REVISI DATA</button>
+      </div>
+    </div>
+
+    <div id="item-container"></div>
+
+    <div class="section-title">Tanda Tangan MOD</div>
+    <div class="sig-wrapper"><canvas id="padMOD"></canvas></div>
+    <div class="text-end mb-3"><button class="btn btn-sm btn-link text-danger" onclick="clearPad()">Clear Signature</button></div>
+    
+    <div class="section-title mt-4 text-center fw-bold" style="color: #bc005b;">PILIH FORMAT EXPORT</div>
+    <div class="row g-2 mb-3">
+      <div class="col-4">
+        <button id="btnPDF" class="btn btn-danger w-100 btn-sm fw-bold shadow-sm" onclick="kirimData('PDF', this)">📕 PDF</button>
+      </div>
+      <div class="col-4">
+        <button id="btnEXCEL" class="btn btn-success w-100 btn-sm fw-bold shadow-sm" onclick="kirimData('EXCEL', this)">📗 EXCEL</button>
+      </div>
+      <div class="col-4">
+        <button id="btnPNG" class="btn btn-warning w-100 btn-sm fw-bold shadow-sm text-dark" onclick="kirimData('PNG', this)">🖼️ PNG</button>
+      </div>
+    </div>
+  </div> </div> 
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script>
+  // --- VARIABEL GLOBAL ---
+  let MASTER_PRODUK = {}; 
+  const canvas = document.getElementById('padMOD'); 
+  const pad = new SignaturePad(canvas, { 
+    backgroundColor: 'rgb(255, 255, 255)',
+    penColor: 'rgb(0, 0, 0)',
+    minWidth: 2,
+    maxWidth: 4
+  });
+
+  // --- INITIALIZATION ---
+  window.onload = () => { 
+    resizeCanvas(); 
+    if (typeof loadProgress === "function") loadProgress(); 
+
+    // Panggil data master produk
+    refreshMasterProduk();
+  };
+
+  async function refreshMasterProduk() {
+    try {
+      const res = await fetch('/api/products');
+      const data = await res.json();
+      console.log("Data diterima dari server:", data); // Lihat di Inspect Element > Console
+      if (data && typeof data === 'object') {
+        MASTER_PRODUK = data;
+      } else {
+        console.error("Format data salah atau kosong");
+      }
+    } catch (err) {
+      console.error("Gagal ambil master:", err);
+    }
+  }
+
+  window.addEventListener("resize", resizeCanvas);
+
+  function resizeCanvas() {
+    const ratio = Math.max(window.devicePixelRatio || 1, 1);
+    canvas.width = canvas.offsetWidth * ratio;
+    canvas.height = canvas.offsetHeight * ratio;
+    canvas.getContext("2d").scale(ratio, ratio);
+    pad.clear();
+  }
+
+  function clearPad() { pad.clear(); }
+
+  // --- FUNGSI TAMBAH MANUAL (VERSI FIX BERDASARKAN CONSOLE) ---
+async function addItemManual() {
+  if (!MASTER_PRODUK || Object.keys(MASTER_PRODUK).length === 0) {
+    Swal.fire("Sabar...", "Data produk belum siap, coba lagi dalam sedetik.", "warning");
+    return;
+  }
+
+  const counters = Object.keys(MASTER_PRODUK).sort();
+
+  // 1. Pilih Counter via Pop-up
+  const { value: selectedCounter } = await Swal.fire({
+    title: 'Pilih Counter',
+    input: 'select',
+    inputOptions: Object.fromEntries(counters.map(c => [c, c])),
+    inputPlaceholder: '-- Pilih Counter --',
+    showCancelButton: true,
+    confirmButtonColor: '#d6006e' // Warna AEON Magenta
+  });
+
+  if (!selectedCounter) return;
+
+  // 2. Pilih Produk via Pop-up berdasarkan Counter
+  const products = MASTER_PRODUK[selectedCounter].sort();
+  const { value: selectedProduct } = await Swal.fire({
+    title: `Produk di ${selectedCounter}`,
+    input: 'select',
+    inputOptions: {
+      ...Object.fromEntries(products.map(p => [p, p])),
+      'MANUAL_INPUT': '[ + ] KETIK NAMA MANUAL'
+    },
+    inputPlaceholder: '-- Pilih Menu --',
+    showCancelButton: true,
+    confirmButtonColor: '#d6006e'
+  });
+
+  if (!selectedProduct) return;
+
+  let finalProductName = selectedProduct;
+
+  // 3. Jika pilih manual, minta input nama
+  if (selectedProduct === 'MANUAL_INPUT') {
+    const { value: manualName } = await Swal.fire({
+      title: 'Ketik Nama Produk',
+      input: 'text',
+      inputPlaceholder: 'Contoh: Nasi Goreng Spesial',
+      showCancelButton: true,
+      confirmButtonColor: '#d6006e'
+    });
+    if (!manualName) return;
+    finalProductName = manualName;
+  }
+
+  // 4. Baru masukkan ke daftar (Render ke bawah)
+  renderNewItem(selectedCounter, finalProductName);
+  
+  // Script otomatis scroll ke item paling baru agar tidak "hilang" lagi
+  const container = document.getElementById('item-container');
+  container.lastElementChild.scrollIntoView({ behavior: 'smooth' });
+}
+
+  function updateByCounterTester(el) {
+  const row = el.closest('.item-row');
+  const area = row.querySelector('.product-input-area');
+  const cat = el.value;
+
+  if (cat === "OTHERS") {
+    area.innerHTML = `
+      <label class="small text-muted" style="font-size:10px">Nama Produk:</label>
+      <input type="text" class="form-control form-control-sm item-nama-val" placeholder="Ketik manual..." oninput="saveProgress()">`;
+  } else if (cat === "") {
+    // Balikkan ke semua produk jika pilih "Semua Counter"
+    refreshProductDropdown(row, null);
+  } else {
+    // Filter produk berdasarkan counter yang dipilih
+    refreshProductDropdown(row, cat);
+  }
+  saveProgress();
+}
+
+function refreshProductDropdown(row, category) {
+  const area = row.querySelector('.product-input-area');
+  let options = `<option value="">-- Pilih Produk --</option>`;
+  
+  if (category) {
+    MASTER_PRODUK[category].forEach(p => {
+      options += `<option value="${p}" data-cat="${category}">${p}</option>`;
+    });
+  } else {
+    Object.keys(MASTER_PRODUK).forEach(cat => {
+      MASTER_PRODUK[cat].forEach(p => {
+        options += `<option value="${p}" data-cat="${cat}">${p}</option>`;
+      });
+    });
+  }
+  options += `<option value="MANUAL_INPUT" style="font-weight:bold; color:blue;">[ + ] KETIK NAMA MANUAL</option>`;
+  
+  area.innerHTML = `
+    <label class="small text-muted" style="font-size:10px">Pilih Produk:</label>
+    <select class="form-select form-select-sm item-nama-val" onchange="updateByProductTester(this)">
+      ${options}
+    </select>`;
+}
+
+  function updateByProductTester(el) {
+  const row = el.closest('.item-row');
+  if (el.value === "MANUAL_INPUT") {
+    row.querySelector('.product-input-area').innerHTML = `
+      <label class="small text-muted" style="font-size:10px">Nama Produk:</label>
+      <div class="input-group input-group-sm">
+        <input type="text" class="form-control item-nama-val" placeholder="Nama menu..." oninput="saveProgress()">
+        <button class="btn btn-outline-secondary" type="button" onclick="cancelManualTester(this)">✖</button>
+      </div>`;
+  } else {
+    const selectedOption = el.options[el.selectedIndex];
+    const cat = selectedOption.getAttribute('data-cat');
+    if (cat) {
+      row.querySelector('.item-counter').value = cat;
+    }
+  }
+  saveProgress();
+}
+
+function renderNewItem(counter, nama) {
+  const container = document.getElementById('item-container');
+  const itemCount = container.querySelectorAll('.item-row').length + 1;
+  const div = document.createElement('div');
+  div.className = 'item-row shadow-sm border-start border-primary border-4 animate__animated animate__fadeInUp';
+  
+  const uniqueId = Date.now();
+  div.innerHTML = `
+    <div class="d-flex justify-content-between align-items-center mb-1">
+      <div class="fw-bold small text-primary"><span class="text-dark">#${itemCount}</span> - ${counter}</div>
+      <a href="javascript:void(0)" class="text-danger small" onclick="this.closest('.item-row').remove(); saveProgress(); updateNumbers();">Hapus</a>
+    </div>
+    <div class="mb-2 fw-bold text-uppercase" style="font-size: 0.9rem;">${nama}</div>
+    
+    <input type="hidden" class="item-counter" value="${counter}">
+    <input type="hidden" class="item-nama-val" value="${nama}">
+
+    <div class="star-rating mb-2">
+      <input type="radio" name="r-${uniqueId}" value="3" id="3-${uniqueId}" checked onchange="saveProgress()"><label for="3-${uniqueId}"></label>
+      <input type="radio" name="r-${uniqueId}" value="2" id="2-${uniqueId}" onchange="saveProgress()"><label for="2-${uniqueId}"></label>
+      <input type="radio" name="r-${uniqueId}" value="1" id="1-${uniqueId}" onchange="saveProgress()"><label for="1-${uniqueId}"></label>
+    </div>
+    <input type="text" class="form-control form-control-sm item-comment" placeholder="Tambah catatan (opsional)..." oninput="saveProgress()">
+  `;
+  container.appendChild(div);
+  saveProgress();
+}
+
+  function cancelManualTester(btn) {
+  const row = btn.closest('.item-row');
+  const counterVal = row.querySelector('.item-counter').value;
+  refreshProductDropdown(row, counterVal || null);
+}
+
+  // --- FUNGSI PROGRESS, DRAFT, REVISI (TETAP SAMA) ---
+  function saveProgress() {
+    const items = [];
+    document.querySelectorAll('.item-row').forEach(row => {
+      const n = row.querySelector('.item-nama-val')?.value;
+      const c = row.querySelector('.item-counter')?.value;
+      if(n && n !== "MANUAL") {
+        items.push({
+          counter: c || "",
+          nama: n,
+          nilai: row.querySelector('input:checked')?.value || "3",
+          comment: row.querySelector('.item-comment')?.value || ""
+        });
+      }
+    });
+    localStorage.setItem('testFoodDraft', JSON.stringify({
+      tanggal: document.getElementById('tanggal').value,
+      waktu: document.getElementById('waktu').value,
+      mod: document.getElementById('mod').value,
+      testers: [
+        document.getElementById('tester1').value, 
+        document.getElementById('tester2').value, 
+        document.getElementById('tester3').value, 
+        document.getElementById('tester4').value
+      ],
+      items: items
+    }));
+  }
+
+  function loadProgress() {
+    const saved = localStorage.getItem('testFoodDraft');
+    if (!saved) return;
+    const d = JSON.parse(saved);
+    document.getElementById('tanggal').value = d.tanggal || "";
+    document.getElementById('waktu').value = d.waktu || "PAGI";
+    document.getElementById('mod').value = d.mod || "";
+    document.getElementById('tester1').value = d.testers?.[0] || "";
+    document.getElementById('tester2').value = d.testers?.[1] || "";
+    document.getElementById('tester3').value = d.testers?.[2] || "";
+    document.getElementById('tester4').value = d.testers?.[3] || "";
+    if (d.items) {
+      document.getElementById('item-container').innerHTML = '';
+      d.items.forEach((item, i) => renderItemRow(item, i));
+    }
+  }
+
+  function renderItemRow(item, i) {
+    const container = document.getElementById('item-container');
+    const div = document.createElement('div');
+    div.className = 'item-row shadow-sm';
+    const uniqueId = Date.now() + i;
+    div.innerHTML = `
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <div class="fw-bold small text-primary"><span class="text-dark">#</span> - ${item.counter}</div>
+        <a href="javascript:void(0)" class="text-danger small" onclick="this.closest('.item-row').remove(); saveProgress(); updateNumbers();">Hapus</a>
+      </div>
+      <div class="mb-2 fw-semibold">${item.nama}</div>
+      <input type="hidden" class="item-nama-val" value="${item.nama}">
+      <input type="hidden" class="item-counter" value="${item.counter}">
+      <div class="star-rating mb-2">
+        <input type="radio" name="r-${uniqueId}" value="3" id="3-${uniqueId}" ${item.nilai == '3' ? 'checked' : ''} onchange="saveProgress()"><label for="3-${uniqueId}"></label>
+        <input type="radio" name="r-${uniqueId}" value="2" id="2-${uniqueId}" ${item.nilai == '2' ? 'checked' : ''} onchange="saveProgress()"><label for="2-${uniqueId}"></label>
+        <input type="radio" name="r-${uniqueId}" value="1" id="1-${uniqueId}" ${item.nilai == '1' ? 'checked' : ''} onchange="saveProgress()"><label for="1-${uniqueId}"></label>
+      </div>
+      <input type="text" class="form-control form-control-sm item-comment" placeholder="Komentar..." value="${item.comment || ''}" oninput="saveProgress()">
+    `;
+    container.appendChild(div);
+    updateNumbers();
+  }
+
+  function updateNumbers() {
+    document.querySelectorAll('#item-container .item-row').forEach((row, index) => {
+      const label = row.querySelector('.text-dark');
+      if(label) label.innerText = '#' + (index + 1);
+    });
+  }
+
+  async function loadPIC() {
+    const t = document.getElementById('tanggal').value;
+    const w = document.getElementById('waktu').value;
+    if(!t) return alert("Pilih tanggal dahulu!");
+    const btn = document.querySelector('button[onclick="loadPIC()"]');
+    btn.disabled = true; btn.innerHTML = "⌛ Mengambil...";
+    const res = await fetch(`/api/pic?tanggal=${t}&waktu=${w}`).then(r => r.json());
+    btn.disabled = false; btn.innerHTML = "📥 AMBIL DATA PRODUK DARI PIC";
+    if(!res.success) return alert(res.message);
+    document.getElementById('item-container').innerHTML = '';
+    res.items.forEach((item, i) => renderItemRow({ counter: item.counter, nama: item.nama, nilai: "3", comment: "" }, i));
+    saveProgress();
+  }
+
+  async function simpanDraft() {
+    const t = document.getElementById('tanggal').value;
+    const w = document.getElementById('waktu').value;
+    if(!t) return alert("Pilih tanggal!");
+    const items = [];
+    document.querySelectorAll('.item-row').forEach(row => {
+      const n = row.querySelector('.item-nama-val')?.value;
+      if(n && n !== "MANUAL") {
+        items.push({
+          counter: row.querySelector('.item-counter')?.value || "",
+          nama: n,
+          nilai: row.querySelector('input:checked')?.value || "3",
+          comment: row.querySelector('.item-comment')?.value || ""
+        });
+      }
+    });
+    const res = await fetch('/api/tester/draft', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tanggal: t, waktu: w, mod: document.getElementById('mod').value,
+        testers: [document.getElementById('tester1').value, document.getElementById('tester2').value, document.getElementById('tester3').value, document.getElementById('tester4').value],
+        items: items
+      })
+    }).then(r => r.json());
+    alert(res);
+  }
+
+  async function panggilRevisi() {
+    const t = document.getElementById('tanggal').value;
+    const w = document.getElementById('waktu').value;
+    if(!t) return alert("Pilih tanggal & shift!");
+    const res = await fetch(`/api/tester/draft?tanggal=${t}&waktu=${w}`).then(r => r.json());
+    if(!res.success) return alert("Data tidak ditemukan.");
+    const d = res.data;
+    document.getElementById('mod').value = d.mod;
+    document.getElementById('tester1').value = d.testers[0];
+    document.getElementById('tester2').value = d.testers[1];
+    document.getElementById('tester3').value = d.testers[2];
+    document.getElementById('tester4').value = d.testers[3];
+    document.getElementById('item-container').innerHTML = '';
+    d.items.forEach((item, i) => renderItemRow(item, i));
+    alert("✅ Data dimuat.");
+  }
+
+  async function kirimData(format, btnElement) {
+    const items = [];
+    document.querySelectorAll('.item-row').forEach(row => {
+      const n = row.querySelector('.item-nama-val')?.value;
+      if(n && n !== "MANUAL") {
+        items.push({
+          counter: row.querySelector('.item-counter').value,
+          nama: n,
+          nilai: row.querySelector('input:checked')?.value || "3",
+          comment: row.querySelector('.item-comment').value
+        });
+      }
+    });
+
+    if(!items.length || pad.isEmpty() || !document.getElementById('mod').value) {
+      return alert("⚠️ Lengkapi data dan Tanda Tangan!");
+    }
+
+    const originalText = btnElement.innerHTML;
+    document.querySelectorAll('.btn').forEach(b => b.disabled = true);
+    btnElement.innerHTML = "⌛ Proses...";
+
+    try {
+      const res = await fetch('/api/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          outputType: format,
+          tanggal: document.getElementById('tanggal').value,
+          waktu: document.getElementById('waktu').value,
+          mod: document.getElementById('mod').value,
+          testers: [document.getElementById('tester1').value, document.getElementById('tester2').value, document.getElementById('tester3').value, document.getElementById('tester4').value],
+          items: items,
+          sigMOD: pad.toDataURL()
+        })
+      }).then(r => r.json());
+
+      if(res.success) {
+        alert("✅ Berhasil!" + (res.message ? " " + res.message : ""));
+        localStorage.removeItem('testFoodDraft');
+        if (res.url) window.open(res.url, '_blank');
+        location.reload();
+      } else {
+        alert("❌ " + res.message);
+        resetButtons(originalText, btnElement);
+      }
+    } catch (err) {
+      alert("❌ " + err.toString());
+      resetButtons(originalText, btnElement);
+    }
+  }
+
+  function resetButtons(text, currentBtn) {
+    document.querySelectorAll('.btn').forEach(b => b.disabled = false);
+    currentBtn.innerHTML = text;
+  }
+</script>
+</body>
+</html>

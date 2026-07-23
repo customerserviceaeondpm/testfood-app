@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --aeon-magenta: #bc005b;
+    }
+    
+    body { 
+      background: #f8fafc; 
+      font-family: 'Plus Jakarta Sans', sans-serif; 
+      padding-bottom: 20px;
+      margin: 0;
+    }
+
+    .main-wrapper {
+      width: 100%;
+      max-width: 600px; 
+      margin: 0 auto;
+      background: #f8fafc;
+      min-height: 100vh;
+    }
+
+    .header { 
+      background: var(--aeon-magenta); 
+      color: white; 
+      padding: 12px; 
+      position: sticky; 
+      top: 0; 
+      z-index: 100;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+
+    /* Kalender */
+    .calendar-container { 
+      background: white; 
+      border-radius: 12px; 
+      padding: 10px; 
+      margin: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05); 
+    }
+    
+    .calendar-grid { 
+      display: grid; 
+      grid-template-columns: repeat(7, 1fr); 
+      gap: 4px; 
+    }
+
+    .day-name { 
+      text-align: center; 
+      font-size: 9px; 
+      font-weight: 800; 
+      color: #94a3b8; 
+      padding-bottom: 4px; 
+    }
+    
+    .day-box { 
+      aspect-ratio: 1/1; 
+      display: flex; 
+      align-items: center; 
+      justify-content: center; 
+      font-weight: 700; 
+      border-radius: 6px; 
+      font-size: 11px; 
+      cursor: pointer; 
+      border: 1.5px solid transparent;
+      transition: all 0.2s;
+    }
+
+    /* Warna Status */
+    .bg-full { background-color: #22c55e !important; color: white; } 
+    .bg-half { background-color: #f59e0b !important; color: white; } 
+    .bg-none { background-color: #ef4444 !important; color: white; } 
+    .bg-future { background-color: #f1f5f9 !important; color: #cbd5e1; }
+
+    /* Notifikasi Issue Kecil di Kalender */
+    .issue-note {
+      position: absolute;
+      top: 2px;
+      right: 2px;
+      width: 6px;
+      height: 6px;
+      background-color: #ffffff;
+      border-radius: 50%;
+      border: 1px solid #ef4444;
+    }
+    .issue-text {
+      position: absolute;
+      top: -1px;
+      right: 3px;
+      font-size: 7px;
+      color: #ffeb3b;
+      font-weight: 900;
+    }
+
+    /* Bagian Counter Issue Grid (Bawah Kalender) */
+    .counter-section {
+      padding: 10px;
+      margin: 10px;
+    }
+    .counter-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .counter-card {
+      background: white;
+      border-radius: 12px;
+      padding: 10px;
+      text-align: center;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+      border: 1px solid #e2e8f0;
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+    .counter-card:active {
+      transform: scale(0.95);
+    }
+    .counter-badge {
+      font-size: 20px;
+      font-weight: 700;
+      color: #334155;
+      display: block;
+      margin-bottom: 2px;
+    }
+    .counter-card.has-issue .counter-badge {
+      color: #ef4444;
+    }
+    .counter-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #64748b;
+    }
+    .counter-preview {
+      font-size: 8px;
+      color: #94a3b8;
+      margin-top: 4px;
+      text-overflow: ellipsis;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    /* Shift Card dalam Modal */
+    .shift-card { 
+      background: #f8fafc; 
+      border-radius: 10px; 
+      padding: 10px; 
+      margin-bottom: 10px; 
+      border-left: 4px solid #e2e8f0; 
+      font-size: 13px;
+    }
+    .shift-card.exists { border-left-color: #22c55e; }
+
+    @media (min-width: 768px) {
+      .main-wrapper {
+        margin-top: 20px;
+        border-radius: 15px;
+        overflow: hidden;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="main-wrapper">
+  <div class="header text-center">
+    <h6 class="m-0 fw-bold" style="font-size: 14px;">DASHBOARD MONITORING TEST FOOD DPM</h6>
+    <div class="d-flex justify-content-center align-items-center mt-2">
+      <button class="btn btn-sm p-0 px-2 text-white" onclick="changeMonth(-1)"><b>&lt;</b></button>
+      <span id="currentMonthLabel" class="fw-bold px-3" style="font-size: 13px;">Bulan...</span>
+      <button class="btn btn-sm p-0 px-2 text-white" onclick="changeMonth(1)"><b>&gt;</b></button>
+    </div>
+  </div>
+
+  <div class="container-fluid mt-2">
+    <div class="d-flex justify-content-center gap-3 mb-2 px-1" style="font-size: 9px; font-weight: 600;">
+      <span><span class="badge rounded-circle bg-full p-1"> </span> Lengkap</span>
+      <span><span class="badge rounded-circle bg-half p-1"> </span> Parsial</span>
+      <span><span class="badge rounded-circle bg-none p-1"> </span> Kosong</span>
+    </div>
+
+    <div class="calendar-container">
+      <div class="calendar-grid">
+        <div class="day-name">MIN</div><div class="day-name">SEN</div><div class="day-name">SEL</div>
+        <div class="day-name">RAB</div><div class="day-name">KAM</div><div class="day-name">JUM</div><div class="day-name">SAB</div>
+      </div>
+      <div class="calendar-grid" id="calendarBody"></div>
+    </div>
+  </div>
+
+  <div class="counter-section">
+    <div class="fw-bold text-secondary mb-2" style="font-size: 12px; letter-spacing: 0.5px;">
+      📌 TOTAL ISSUE: <span id="totalMonthlyIssueLabel" class="text-danger">0</span> ITEM
+    </div>
+    <div class="counter-grid" id="counterGridContainer">
+      </div>
+  </div>
+</div>
+
+<div class="modal fade" id="dateDetailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm" style="max-width: 400px;">
+    <div class="modal-content" style="border-radius: 16px;">
+      <div class="modal-header border-0 pb-0">
+        <h6 class="modal-title fw-bold text-secondary" id="modalDateLabel">Detail Tanggal</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" style="font-size: 10px;"></button>
+      </div>
+      <div class="modal-body" id="modalDetailContent">
+        </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="counterIssueModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm" style="max-width: 420px;">
+    <div class="modal-content" style="border-radius: 16px;">
+      <div class="modal-header border-0 pb-0">
+        <h6 class="modal-title fw-bold" id="modalCounterTitle" style="color: var(--aeon-magenta);">Detail Temuan Counter</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" style="font-size: 10px;"></button>
+      </div>
+      <div class="modal-body" id="modalCounterContent" style="max-height: 400px; overflow-y: auto;">
+        </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  let viewDate = new Date(); 
+  let globalMonthlyIssues = []; 
+  
+  // Mapping Emoji Counter sesuai nuansa Departemen AEON DPM
+  const counterEmojis = {
+    "DELICA": "🍱",
+    "SUSHI": "🍣",
+    "BAKERY": "🍞",
+    "MINISTOP": "🏪",
+    "CHICKEN": "🍗",
+    "CUT FRUIT": "🍉",
+    "REWARD KITCHEN": "🍳",
+    "TEMPURA": "🍤",
+    "TEPPANYAKI": "🥩",
+    "PRODUCE": "🥬",
+    "FISH": "🐟",
+    "MEAT": "🥩"
+  };
+
+  window.onload = () => renderDashboard();
+
+  async function renderDashboard() {
+    const bulan = viewDate.getMonth() + 1;
+    const tahun = viewDate.getFullYear();
+    const namaBulan = viewDate.toLocaleString('id-ID', { month: 'long', year: 'numeric' });
+    document.getElementById('currentMonthLabel').innerText = namaBulan;
+
+    // Ambil data utama kalender
+    const res = await fetch(`/api/dashboard?bulan=${bulan}&tahun=${tahun}`).then(r => r.json());
+    drawCalendar(bulan, tahun, res.calendar);
+
+    // Setelah data kalender selesai, ambil data ringkasan issue untuk tombol counter di bawahnya
+    fetchAndRenderCounterIssues(bulan, tahun);
+  }
+
+  function changeMonth(step) {
+    viewDate.setMonth(viewDate.getMonth() + step);
+    renderDashboard();
+  }
+
+  function drawCalendar(bulan, tahun, map) {
+    const body = document.getElementById('calendarBody');
+    body.innerHTML = '';
+    
+    const firstDay = new Date(tahun, bulan - 1, 1).getDay();
+    const daysInMonth = new Date(tahun, bulan, 0).getDate();
+    const today = new Date();
+    const isCurrentMonth = (today.getMonth() + 1 === bulan && today.getFullYear() === tahun);
+
+    for (let p = 0; p < firstDay; p++) {
+      body.innerHTML += `<div></div>`;
+    }
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      let status = 'bg-none';
+      const data = map[d];
+      
+      if (data) {
+        if (data.pagi && data.sore) status = 'bg-full';
+        else if (data.pagi || data.sore) status = 'bg-half';
+      } else if (isCurrentMonth && d > today.getDate()) {
+        status = 'bg-future';
+      } else if (!isCurrentMonth && viewDate > today) {
+        status = 'bg-future';
+      }
+
+      const warningElement = (data && data.hasIssue) ? `<div class="issue-text">!</div><div class="issue-note"></div>` : '';
+
+      body.innerHTML += `
+        <div class="day-box ${status} position-relative" id="day-${d}" onclick="openDateModal(${d}, '${tahun}-${String(bulan).padStart(2,'0')}-${String(d).padStart(2,'0')}')">
+          ${d}
+          ${warningElement}
+        </div>`;
+    }
+  }
+
+  // --- POPUP MODAL UNTUK DETAIL HARIAN ---
+  async function openDateModal(d, fullDate) {
+    const dateObj = new Date(fullDate);
+    const opsiHari = { weekday: 'long', day: 'numeric', month: 'long' };
+    document.getElementById('modalDateLabel').innerText = dateObj.toLocaleDateString('id-ID', opsiHari);
+    
+    document.getElementById('modalDetailContent').innerHTML = '<div class="text-center p-3"><div class="spinner-border spinner-border-sm text-danger"></div></div>';
+    
+    const myModal = new bootstrap.Modal(document.getElementById('dateDetailModal'));
+    myModal.show();
+
+    const data = await fetch(`/api/detail?tanggal=${fullDate}`).then(r => r.json());
+    renderModalDetails(data);
+  }
+
+  function renderModalDetails(data) {
+    const shifts = ["PAGI", "SORE"];
+    let html = '';
+
+    shifts.forEach(s => {
+      const shiftData = data.filter(item => item.shift === s);
+      const isExist = shiftData.length > 0;
+      const issues = shiftData.filter(item => item.nilai < 3);
+
+      html += `
+        <div class="shift-card ${isExist ? 'exists' : ''}">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <span class="fw-bold text-dark" style="font-size: 12px;">${s}</span>
+            <span class="badge ${isExist ? 'bg-success' : 'bg-light text-muted'}" style="font-size: 9px;">${isExist ? 'Submitted' : 'Kosong'}</span>
+          </div>
+          ${isExist ? `<div class="mb-1 text-muted" style="font-size: 10px;">👤 ${shiftData[0].pic} | 🛡️ ${shiftData[0].mod}</div>` : ''}
+          ${issues.length > 0 ? `
+            <div class="mt-2 border-top pt-2">
+              <span class="text-danger fw-bold" style="font-size:10px;">⚠️ TEMUAN:</span>
+              ${issues.map(is => `
+                <div class="ps-2 border-start border-danger border-2 mb-2">
+                  <div class="fw-bold" style="font-size:11px;">${is.produk}</div>
+                  <div class="text-muted" style="font-size:10px;">Skor: ${is.nilai} - "${is.comment}"</div>
+                </div>
+              `).join('')}
+            </div>
+          ` : isExist ? '<div class="text-success" style="font-size: 10px;">✓ Kualitas Produk Aman</div>' : ''}
+        </div>`;
+    });
+    document.getElementById('modalDetailContent').innerHTML = html;
+  }
+
+  // --- LOAD STRUKTUR COUNTER (HANYA SKOR < 3) ---
+  async function fetchAndRenderCounterIssues(bulan, tahun) {
+    const issues = await fetch(`/api/issues?bulan=${bulan}&tahun=${tahun}`).then(r => r.json());
+
+    // FILTER KETAT: Hanya masukkan issue yang skornya < 3 (Skor 1 atau 2)
+    globalMonthlyIssues = issues.filter(is => parseInt(is.nilai) < 3);
+
+    document.getElementById('totalMonthlyIssueLabel').innerText = globalMonthlyIssues.length;
+
+    // List counter utama di AEON DPM
+    const defaultCounters = ["DELICA", "SUSHI", "PRODUCE", "BAKERY", "FISH", "MEAT", "MINISTOP", "CHICKEN", "REWARD KITCHEN", "TEMPURA", "TEPPANYAKI", "CUT FRUIT"];
+
+    const gridContainer = document.getElementById('counterGridContainer');
+    gridContainer.innerHTML = '';
+
+    defaultCounters.forEach(counter => {
+      // Filter issue khusus counter ini
+      const counterIssues = globalMonthlyIssues.filter(is => is.counter.toUpperCase() === counter.toUpperCase());
+      const count = counterIssues.length;
+      const emoji = counterEmojis[counter] || "📦";
+
+      // Ambil nama produk terakhir sebagai preview temuan
+      let previewText = "-";
+      if (count > 0) {
+        previewText = counterIssues[0].produk;
+      }
+
+      const cardClass = count > 0 ? 'counter-card has-issue' : 'counter-card';
+
+      gridContainer.innerHTML += `
+        <div class="${cardClass}" onclick="openCounterIssueModal('${counter}')">
+          <span class="counter-badge">${count}</span>
+          <div class="counter-title">${emoji} ${counter}</div>
+          <div class="counter-preview" title="${previewText}">${previewText}</div>
+        </div>
+      `;
+    });
+  }
+
+  // --- POPUP MODAL COUNTER (SUDAH TERFILTER < 3) ---
+  function openCounterIssueModal(counterName) {
+    // Memastikan data yang diambil dari globalMonthlyIssues benar-benar yang skornya < 3
+    const filtered = globalMonthlyIssues.filter(is => is.counter.toUpperCase() === counterName.toUpperCase());
+    const emoji = counterEmojis[counterName.toUpperCase()] || "📦";
+    
+    document.getElementById('modalCounterTitle').innerText = `${emoji} LIST ISSUE: ${counterName}`;
+    
+    const container = document.getElementById('modalCounterContent');
+    
+    if (filtered.length === 0) {
+      container.innerHTML = `<p class="text-center text-muted small p-3">✓ Mantap! Tidak ada temuan kualitas di counter ${counterName} bulan ini.</p>`;
+    } else {
+      let html = '';
+      filtered.forEach(is => {
+        html += `
+          <div class="shift-card border-start border-danger border-4 mb-2 shadow-sm bg-white" style="font-size:12px;">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <span class="badge bg-danger mb-1" style="font-size: 8px;">Tgl ${is.tgl} - ${is.shift}</span>
+                <div class="fw-bold" style="color: var(--aeon-magenta);">${is.produk}</div>
+              </div>
+              <div class="badge rounded-pill bg-light text-danger border border-danger" style="font-size: 9px;">Skor: ${is.nilai}</div>
+            </div>
+            <div class="mt-2 p-2 rounded small" style="background: #fff5f5; font-size: 11px; border: 1px dashed #feb2b2;">
+              <b>Alasan:</b> <i>"${is.comment || '-'}"</i>
+            </div>
+          </div>`;
+      });
+      container.innerHTML = html;
+    }
+
+    const counterModal = new bootstrap.Modal(document.getElementById('counterIssueModal'));
+    counterModal.show();
+  }
+</script>
+</body>
+</html>

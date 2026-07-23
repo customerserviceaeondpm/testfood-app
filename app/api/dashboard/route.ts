@@ -22,8 +22,9 @@ const supabase = getSupabase();
   for (const row of data) {
     const d = parseInt(row.tanggal.split('-')[2]);
     if (!calendar[d]) calendar[d] = { pagi: false, sore: false, hasIssue: false };
-    if (row.waktu === 'PAGI') calendar[d].pagi = true;
-    if (row.waktu === 'SORE') calendar[d].sore = true;
+const waktuUpper = (row.waktu || '').toString().toUpperCase().trim();
+if (waktuUpper === 'PAGI') calendar[d].pagi = true;
+if (waktuUpper === 'SORE') calendar[d].sore = true;
     if (row.nilai != null && row.nilai < 3) calendar[d].hasIssue = true;
   }
 

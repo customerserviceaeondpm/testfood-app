@@ -5,9 +5,10 @@ export async function GET(req: Request) {
   const bulan = parseInt(searchParams.get('bulan') || '0');
   const tahun = parseInt(searchParams.get('tahun') || '0');
 
-  const supabase = getSupabase();
+const supabase = getSupabase();
   const from = `${tahun}-${String(bulan).padStart(2, '0')}-01`;
-  const to = `${tahun}-${String(bulan).padStart(2, '0')}-31`;
+  const lastDay = new Date(tahun, bulan, 0).getDate();
+  const to = `${tahun}-${String(bulan).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
   const { data, error } = await supabase
     .from('test_food_records')

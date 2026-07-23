@@ -20,7 +20,8 @@ const supabase = getSupabase();
 
   const calendar: Record<number, { pagi: boolean; sore: boolean; hasIssue: boolean }> = {};
   for (const row of data) {
-    const d = parseInt(row.tanggal.split('-')[2]);
+    const dateOnly = String(row.tanggal).slice(0, 10);
+const d = parseInt(dateOnly.split('-')[2], 10);
     if (!calendar[d]) calendar[d] = { pagi: false, sore: false, hasIssue: false };
 const waktuUpper = (row.waktu || '').toString().toUpperCase().trim();
 if (waktuUpper === 'PAGI') calendar[d].pagi = true;

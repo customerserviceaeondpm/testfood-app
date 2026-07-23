@@ -18,10 +18,10 @@ const supabase = getSupabase();
 
   if (error) return Response.json([]);
 
-  const issues = data
+const issues = data
     .filter((r: any) => (r.nilai != null && r.nilai < 3) || r.komentar)
     .map((r: any) => ({
-      tgl: parseInt(r.tanggal.split('-')[2]),
+      tgl: parseInt(String(r.tanggal).slice(0, 10).split('-')[2], 10),
       shift: r.waktu,
       counter: r.counter,
       produk: r.nama_produk,

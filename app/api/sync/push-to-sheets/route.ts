@@ -12,7 +12,7 @@ export async function GET(req: Request) {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('test_food_records')
-    .select('submitted_at, tanggal, waktu, mod, pic, counter, nama_produk, nilai, komentar')
+    .select('timestamp, tanggal, waktu, mod, pic, counter, nama_produk, nilai, komentar')
     .order('tanggal', { ascending: true });
 
   if (error) {

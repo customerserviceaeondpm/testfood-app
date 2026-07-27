@@ -10,13 +10,12 @@ export async function GET(req: Request) {
   }
 
   const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from('test_food_records')
-    .select('timestamp, tanggal, waktu, mod, pic, counter, nama_produk, nilai, komentar')
-    .order('tanggal', { ascending: true });
 
-  if (error) {
-    return Response.json({ success: false, message: error.message }, { status: 500 });
+  let data: any[];
+  try {
+    data = await fetchAllRecords(supabase);
+  } catch (e: any) {
+    return Response.json({ success: false, message: e.toString() }, { status: 500 });
   }
 
   try {
@@ -27,7 +26,7 @@ export async function GET(req: Request) {
 
     const header = ['Timestamp', 'Tanggal', 'Shift', 'MOD', 'PIC', 'Counter', 'Nama Produk', 'Nilai', 'Komentar'];
     const rows = (data || []).map((r: any) => [
-      r.submitted_at, r.tanggal, r.waktu, r.mod, r.pic, r.counter, r.nama_produk, r.nilai, r.komentar,
+      r.timestamp, r.tanggal, r.waktu, r.mod, r.pic, r.counter, r.nama_produk, r.nilai, r.komentar,
     ]);
 
     // Bersihkan isi lama, tulis ulang semua data (mirror penuh, sederhana dan pasti konsisten)
@@ -46,6 +45,31 @@ export async function GET(req: Request) {
   } catch (e: any) {
     return Response.json({ success: false, message: e.toString() }, { status: 500 });
   }
+}
+
+// Supabase/PostgREST membatasi maksimal 1000 baris per query secara default.
+// Fungsi ini mengambil data bertahap (pagination) sampai semua baris benar-benar terambil.
+async function fetchAllRecords(supabase: any) {
+  const pageSize = 1000;
+  let allRows: any[] = [];
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await supabase
+      .from('test_food_records')
+      .select('timestamp, tanggal, waktu, mod, pic, counter, nama_produk, nilai, komentar')
+      .order('tanggal', { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (error) throw new Error(error.message);
+    if (!data || data.length === 0) break;
+
+    allRows = allRows.concat(data);
+    if (data.length < pageSize) break; // halaman terakhir
+    from += pageSize;
+  }
+
+  return allRows;
 }
 
 async function ensureSheetExists(sheets: any, spreadsheetId: string, sheetName: string) {

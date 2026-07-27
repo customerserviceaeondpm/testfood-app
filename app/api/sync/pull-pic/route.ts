@@ -3,7 +3,9 @@ import { getSheetsClient } from '@/lib/googleSheets';
 import { isSyncAuthorized } from '@/lib/syncAuth';
 import { normalizeSheetDate } from '@/lib/sheetDate';
 
-// Kolom sheet "Master_PIC": Timestamp, Tanggal, Waktu, Nama PIC, TTD Data, JSON_Items
+// Membaca kolom berdasarkan NAMA header di baris pertama sheet Master_PIC,
+// bukan posisi tetap - jadi tetap jalan walau urutan/nama kolom berubah,
+// selama nama headernya konsisten dengan yang dicari di bawah.
 export async function GET(req: Request) {
   if (!isSyncAuthorized(req)) {
     return Response.json({ success: false, message: 'Unauthorized' }, { status: 401 });
@@ -15,31 +17,58 @@ export async function GET(req: Request) {
 
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Master_PIC!A2:F',
+      range: 'Master_PIC!A1:Z',
     });
 
-    const rows = res.data.values || [];
+    const allRows = res.data.values || [];
+    if (allRows.length < 2) {
+      return Response.json({
+        success: true,
+        rows: 0,
+        message: 'Sheet Master_PIC kosong atau cuma ada baris header.',
+      });
+    }
+
+    const header = allRows[0].map((h: any) => String(h).trim().toLowerCase());
+    const idx = {
+      tanggal: header.indexOf('tanggal'),
+      waktu: header.indexOf('waktu'),
+      nama_pic: header.indexOf('nama_pic'),
+      signature_url: header.indexOf('signature_url'),
+      items: header.indexOf('items'),
+    };
+
+    if (idx.tanggal === -1 || idx.waktu === -1) {
+      return Response.json({
+        success: false,
+        message: `Kolom 'tanggal' atau 'waktu' tidak ditemukan. Header yang terbaca di sheet: [${header.join(', ')}]`,
+      }, { status: 400 });
+    }
+
+    const dataRows = allRows.slice(1);
     const supabase = getSupabase();
     let count = 0;
     const errors: string[] = [];
 
-    for (const r of rows) {
-      const tanggal = normalizeSheetDate(r[1]);
-      const waktu = String(r[2] || '').trim().toUpperCase();
+    for (const r of dataRows) {
+      const tanggal = normalizeSheetDate(r[idx.tanggal]);
+      const waktu = String(r[idx.waktu] || '').trim().toUpperCase();
       if (!tanggal || !waktu) continue;
 
-      const namaPic = r[3] || null;
-      const ttdRaw = r[4] || null;
+      const namaPic = idx.nama_pic !== -1 ? (r[idx.nama_pic] || null) : null;
+      const ttdRaw = idx.signature_url !== -1 ? (r[idx.signature_url] || null) : null;
 
       let items: any[] = [];
-      try {
-        items = r[5] ? JSON.parse(r[5]) : [];
-      } catch {
-        items = [];
+      const itemsRaw = idx.items !== -1 ? r[idx.items] : null;
+      if (itemsRaw) {
+        try {
+          items = JSON.parse(itemsRaw);
+        } catch {
+          items = [];
+        }
       }
 
-      // Kalau TTD masih berupa base64 mentah, upload ke Storage supaya konsisten
-      // dengan cara penyimpanan tanda tangan lewat form PIC baru.
+      // Kalau signature_url ternyata masih base64 mentah (bukan URL), upload dulu ke Storage
       let signatureUrl = ttdRaw;
       if (ttdRaw && typeof ttdRaw === 'string' && ttdRaw.startsWith('data:image')) {
         const base64 = ttdRaw.split(',')[1];
@@ -73,7 +102,12 @@ export async function GET(req: Request) {
       count++;
     }
 
-    return Response.json({ success: true, rows: count, errors });
+    return Response.json({
+      success: true,
+      rows: count,
+      totalRowsInSheet: dataRows.length,
+      errors,
+    });
   } catch (e: any) {
     return Response.json({ success: false, message: e.toString() }, { status: 500 });
   }

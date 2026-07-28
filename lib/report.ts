@@ -1,17 +1,27 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import ExcelJS from 'exceljs';
+import { generatePdfFromTemplate } from './pdfTemplate';
 
-// CATATAN MVP:
-// - Layout PDF/Excel di bawah ini adalah versi sederhana (tabel counter/produk/nilai/komentar),
-//   BUKAN tiruan persis layout "Template_PDF" lama. Ini titik awal yang sudah berfungsi;
-//   silakan disempurnakan agar sama persis dengan layout asli.
-// - outputType "PNG" untuk sementara juga menghasilkan PDF (konversi PDF->PNG belum diimplementasikan).
-export async function generateReport(data: any, namaPic: string, supabase: any) {
+// CATATAN:
+// - outputType "PDF" sekarang memakai template asli "Template_PDF" di Google Sheets
+//   (lihat lib/pdfTemplate.ts), hasilnya disimpan ke folder Google Drive.
+// - outputType "EXCEL" masih pakai versi sederhana lewat exceljs, tersimpan ke Supabase Storage.
+// - outputType "PNG" untuk sementara ikut menghasilkan PDF sederhana (belum ada konversi PDF->PNG).
+export async function generateReport(data: any, namaPic: string, sigPicUrl: string | null, supabase: any) {
   const fileName = `Report_TestFood_${data.tanggal}_${data.waktu}`;
 
   if (data.outputType === 'EXCEL') {
     return await generateExcel(data, namaPic, supabase, fileName);
   }
+
+  if (data.outputType === 'PDF') {
+    const url = await generatePdfFromTemplate(data, namaPic, sigPicUrl, supabase);
+    await supabase.from('generated_reports').insert({
+      tanggal: data.tanggal, waktu: data.waktu, format: 'PDF', file_url: url,
+    });
+    return url;
+  }
+
   return await generatePdf(data, namaPic, supabase, fileName);
 }
 

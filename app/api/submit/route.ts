@@ -1,14 +1,18 @@
 import { getSupabase } from '@/lib/supabase';
 import { generateReport } from '@/lib/report';
 
+// Proses generate PDF lewat template Google Sheets butuh waktu lebih lama
+// (salin sheet, isi data, tunggu gambar tanda tangan render, export, upload ke Drive).
+export const maxDuration = 60;
+
 export async function POST(req: Request) {
   const data = await req.json();
   const supabase = getSupabase();
 
-  // Ambil nama PIC untuk tanggal & shift ini (sama seperti getPicData() di processForm lama)
+  // Ambil nama PIC & tanda tangan PIC untuk tanggal & shift ini (sama seperti getPicData() lama)
   const { data: pic } = await supabase
     .from('pic_submissions')
-    .select('nama_pic')
+    .select('nama_pic, signature_url')
     .eq('tanggal', data.tanggal)
     .eq('waktu', data.waktu)
     .maybeSingle();
@@ -38,7 +42,7 @@ export async function POST(req: Request) {
   if (error) return Response.json({ success: false, message: error.message });
 
   try {
-    const url = await generateReport(data, pic.nama_pic, supabase);
+    const url = await generateReport(data, pic.nama_pic, pic.signature_url || null, supabase);
     return Response.json({ success: true, url });
   } catch (e: any) {
     // Data sudah tersimpan walau proses generate laporan gagal

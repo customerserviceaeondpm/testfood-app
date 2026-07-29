@@ -206,11 +206,18 @@ export async function generatePdfFromTemplate(
 
     const fileId = driveRes.data.id!;
 
-    // 10. Buka akses "siapa saja yang punya link bisa lihat" biar link langsung bisa dibuka
-    await drive.permissions.create({
-      fileId,
-      requestBody: { role: 'reader', type: 'anyone' },
-    });
+    // 10. Coba buka akses "siapa saja yang punya link bisa lihat".
+    //     Kalau kebijakan Google Workspace organisasi memblokir sharing publik,
+    //     langkah ini boleh gagal - PDF-nya tetap tersimpan di folder Drive,
+    //     tinggal diakses oleh siapa saja yang sudah punya akses ke folder itu.
+    try {
+      await drive.permissions.create({
+        fileId,
+        requestBody: { role: 'reader', type: 'anyone' },
+      });
+    } catch (permErr: any) {
+      console.error('Gagal set permission publik (dilewati, file tetap tersimpan):', permErr?.message || permErr);
+    }
 
     return driveRes.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
   } finally {

@@ -53,12 +53,24 @@ export async function generatePdfFromTemplate(
     }
     const templateSheetId = templateSheet.properties.sheetId;
 
-    // 2. Buat spreadsheet sementara
-    const createRes = await sheets.spreadsheets.create({
-      requestBody: { properties: { title: `Temp_${data.tanggal}_${data.waktu}` } },
+    // 2. Buat spreadsheet sementara LANGSUNG DI DALAM folder Drive yang sudah di-share.
+    //    Penting: kalau dibuat tanpa parent folder, file akan masuk ke "My Drive" milik
+    //    service account sendiri - dan service account mandiri (di luar Google Workspace)
+    //    tidak punya kuota penyimpanan pribadi, sehingga akan gagal dengan error izin.
+    //    Dengan membuat langsung di folder yang sudah di-share, kuota yang dipakai adalah
+    //    kuota pemilik folder, bukan kuota service account.
+    const createRes = await drive.files.create({
+      requestBody: {
+        name: `Temp_${data.tanggal}_${data.waktu}`,
+        mimeType: 'application/vnd.google-apps.spreadsheet',
+        parents: [DRIVE_FOLDER_ID],
+      },
+      fields: 'id',
     });
-    tempSpreadsheetId = createRes.data.spreadsheetId!;
-    const defaultSheetId = createRes.data.sheets![0].properties!.sheetId!;
+    tempSpreadsheetId = createRes.data.id!;
+
+    const tempMeta = await sheets.spreadsheets.get({ spreadsheetId: tempSpreadsheetId });
+    const defaultSheetId = tempMeta.data.sheets![0].properties!.sheetId!;
 
     // 3. Salin sheet Template_PDF ke spreadsheet sementara
     const copyRes = await sheets.spreadsheets.sheets.copyTo({

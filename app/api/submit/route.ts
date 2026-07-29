@@ -45,11 +45,13 @@ export async function POST(req: Request) {
     const url = await generateReport(data, pic.nama_pic, pic.signature_url || null, supabase);
     return Response.json({ success: true, url });
   } catch (e: any) {
+    // Ambil pesan detail dari Google API kalau ada (lebih spesifik dari e.toString())
+    const detail = e?.response?.data?.error?.message || e?.errors?.[0]?.message || e?.message || e.toString();
     // Data sudah tersimpan walau proses generate laporan gagal
     return Response.json({
       success: true,
       url: null,
-      message: 'Data tersimpan, tapi laporan gagal dibuat: ' + e.toString(),
+      message: 'Data tersimpan, tapi laporan gagal dibuat: ' + detail,
     });
   }
 }

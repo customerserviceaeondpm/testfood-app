@@ -1,16 +1,18 @@
 import { google } from 'googleapis';
 
-// JWT auth ini dipakai bersama oleh Sheets API dan Drive API,
-// supaya tidak perlu bikin client terpisah-pisah dengan scope berbeda.
+// Pakai OAuth2 dengan refresh token akun Google asli (bukan service account),
+// supaya semua file yang dibuat (spreadsheet sementara, PDF laporan) benar-benar
+// tercatat sebagai milik akun itu dan memakai kuota penyimpanan asli akun tersebut -
+// bukan kuota service account yang selalu 0 byte.
 export function getGoogleAuth() {
-  const privateKey = (process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GOOGLE_OAUTH_CLIENT_ID,
+    process.env.GOOGLE_OAUTH_CLIENT_SECRET
+  );
 
-  return new google.auth.JWT({
-    email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-    key: privateKey,
-    scopes: [
-      'https://www.googleapis.com/auth/spreadsheets',
-      'https://www.googleapis.com/auth/drive',
-    ],
+  oauth2Client.setCredentials({
+    refresh_token: process.env.GOOGLE_OAUTH_REFRESH_TOKEN,
   });
+
+  return oauth2Client;
 }

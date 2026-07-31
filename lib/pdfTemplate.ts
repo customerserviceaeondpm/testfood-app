@@ -82,8 +82,22 @@ export async function generatePdfFromTemplate(
 
     // 4. Hapus sheet default bawaan, ganti nama sheet hasil salinan jadi "Report",
     //    dan atur coret PAGI/SORE - digabung jadi satu batchUpdate biar cepat
+    const headerText = 'PAGI / SORE';
     const strikeStart = data.waktu === 'PAGI' ? 7 : 0;
     const strikeEnd = data.waktu === 'PAGI' ? 11 : 4;
+
+    // Susun textFormatRuns secara dinamis - startIndex TIDAK BOLEH sama dengan atau
+    // melebihi panjang teks (11 karakter). Kalau strikeEnd pas di ujung teks (kasus PAGI,
+    // strikeEnd=11), run "matikan coret" di akhir itu tidak perlu ditambahkan sama sekali,
+    // karena format otomatis berhenti begitu teksnya habis.
+    const textFormatRuns: { startIndex: number; format: any }[] = [];
+    if (strikeStart > 0) {
+      textFormatRuns.push({ startIndex: 0, format: {} });
+    }
+    textFormatRuns.push({ startIndex: strikeStart, format: { strikethrough: true } });
+    if (strikeEnd < headerText.length) {
+      textFormatRuns.push({ startIndex: strikeEnd, format: { strikethrough: false } });
+    }
 
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId: tempSpreadsheetId,
@@ -109,12 +123,8 @@ export async function generatePdfFromTemplate(
                 {
                   values: [
                     {
-                      userEnteredValue: { stringValue: 'PAGI / SORE' },
-                      textFormatRuns: [
-                        { startIndex: 0, format: {} },
-                        { startIndex: strikeStart, format: { strikethrough: true } },
-                        { startIndex: strikeEnd, format: { strikethrough: false } },
-                      ],
+                      userEnteredValue: { stringValue: headerText },
+                      textFormatRuns,
                     },
                   ],
                 },

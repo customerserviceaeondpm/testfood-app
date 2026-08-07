@@ -2,34 +2,36 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import ExcelJS from 'exceljs';
 import { generatePdfFromTemplate } from './pdfTemplate';
 
-// CATATAN:
-// - outputType "PDF" sekarang memakai template asli "Template_PDF" di Google Sheets
-//   (lihat lib/pdfTemplate.ts), hasilnya disimpan ke folder Google Drive.
-// - outputType "EXCEL" masih pakai versi sederhana lewat exceljs, tersimpan ke Supabase Storage.
-// - outputType "PNG" untuk sementara ikut menghasilkan PDF sederhana (belum ada konversi PDF->PNG).
-export async function generateReport(data: any, namaPic: string, sigPicUrl: string | null, supabase: any) {
+export async function generateReport(
+  data: any,
+  namaPic: string,
+  sigPicUrl: string | null,
+  supabase: any
+): Promise<{ url: string; warnings: string[] }> {
   const fileName = `Report_TestFood_${data.tanggal}_${data.waktu}`;
 
   if (data.outputType === 'EXCEL') {
-    return await generateExcel(data, namaPic, supabase, fileName);
+    const url = await generateExcel(data, namaPic, supabase, fileName);
+    return { url, warnings: [] };
   }
 
   if (data.outputType === 'PDF') {
-    const url = await generatePdfFromTemplate(data, namaPic, sigPicUrl, supabase);
+    const result = await generatePdfFromTemplate(data, namaPic, sigPicUrl, supabase);
     await supabase.from('generated_reports').insert({
-      tanggal: data.tanggal, waktu: data.waktu, format: 'PDF', file_url: url,
+      tanggal: data.tanggal, waktu: data.waktu, format: 'PDF', file_url: result.url,
     });
-    return url;
+    return result;
   }
 
-  return await generatePdf(data, namaPic, supabase, fileName);
+  const url = await generatePdf(data, namaPic, supabase, fileName);
+  return { url, warnings: [] };
 }
 
 async function generatePdf(data: any, namaPic: string, supabase: any, fileName: string) {
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  let page = pdfDoc.addPage([595, 842]); // A4 potrait
+  let page = pdfDoc.addPage([595, 842]);
   let y = 800;
 
   const drawText = (text: string, x: number, size = 10, f = font) => {

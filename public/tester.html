@@ -19,6 +19,7 @@
     .star-rating label { cursor: pointer; width: 25px; height: 25px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23cbd5e1'%3E%3Cpath d='M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z'/%3E%3C/svg%3E"); background-size: contain; }
     .star-rating input:checked ~ label { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23f59e0b'%3E%3Cpath d='M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z'/%3E%3C/svg%3E"); }
     .section-title { font-weight: 700; color: var(--primary-color); margin-bottom: 12px; font-size: 0.8rem; text-transform: uppercase; }
+    .badge-manual { font-size: 9px; background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 999px; font-weight: 700; margin-left: 6px; }
   </style>
 </head>
 <body>
@@ -89,7 +90,6 @@
   </div> </div> 
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script>
-  // --- VARIABEL GLOBAL ---
   let MASTER_PRODUK = {}; 
   const canvas = document.getElementById('padMOD'); 
   const pad = new SignaturePad(canvas, { 
@@ -99,12 +99,9 @@
     maxWidth: 4
   });
 
-  // --- INITIALIZATION ---
   window.onload = () => { 
     resizeCanvas(); 
     if (typeof loadProgress === "function") loadProgress(); 
-
-    // Panggil data master produk
     refreshMasterProduk();
   };
 
@@ -112,7 +109,6 @@
     try {
       const res = await fetch('/api/products');
       const data = await res.json();
-      console.log("Data diterima dari server:", data); // Lihat di Inspect Element > Console
       if (data && typeof data === 'object') {
         MASTER_PRODUK = data;
       } else {
@@ -135,174 +131,133 @@
 
   function clearPad() { pad.clear(); }
 
-  // --- FUNGSI TAMBAH MANUAL (VERSI FIX BERDASARKAN CONSOLE) ---
-async function addItemManual() {
-  if (!MASTER_PRODUK || Object.keys(MASTER_PRODUK).length === 0) {
-    Swal.fire("Sabar...", "Data produk belum siap, coba lagi dalam sedetik.", "warning");
-    return;
-  }
+  // --- FUNGSI TAMBAH MANUAL ---
+  async function addItemManual() {
+    if (!MASTER_PRODUK || Object.keys(MASTER_PRODUK).length === 0) {
+      Swal.fire("Sabar...", "Data produk belum siap, coba lagi dalam sedetik.", "warning");
+      return;
+    }
 
-  const counters = Object.keys(MASTER_PRODUK).sort();
+    const counters = Object.keys(MASTER_PRODUK).sort();
 
-  // 1. Pilih Counter via Pop-up
-  const { value: selectedCounter } = await Swal.fire({
-    title: 'Pilih Counter',
-    input: 'select',
-    inputOptions: Object.fromEntries(counters.map(c => [c, c])),
-    inputPlaceholder: '-- Pilih Counter --',
-    showCancelButton: true,
-    confirmButtonColor: '#d6006e' // Warna AEON Magenta
-  });
-
-  if (!selectedCounter) return;
-
-  // 2. Pilih Produk via Pop-up berdasarkan Counter
-  const products = MASTER_PRODUK[selectedCounter].sort();
-  const { value: selectedProduct } = await Swal.fire({
-    title: `Produk di ${selectedCounter}`,
-    input: 'select',
-    inputOptions: {
-      ...Object.fromEntries(products.map(p => [p, p])),
-      'MANUAL_INPUT': '[ + ] KETIK NAMA MANUAL'
-    },
-    inputPlaceholder: '-- Pilih Menu --',
-    showCancelButton: true,
-    confirmButtonColor: '#d6006e'
-  });
-
-  if (!selectedProduct) return;
-
-  let finalProductName = selectedProduct;
-
-  // 3. Jika pilih manual, minta input nama
-  if (selectedProduct === 'MANUAL_INPUT') {
-    const { value: manualName } = await Swal.fire({
-      title: 'Ketik Nama Produk',
-      input: 'text',
-      inputPlaceholder: 'Contoh: Nasi Goreng Spesial',
+    const { value: selectedCounter } = await Swal.fire({
+      title: 'Pilih Counter',
+      input: 'select',
+      inputOptions: Object.fromEntries(counters.map(c => [c, c])),
+      inputPlaceholder: '-- Pilih Counter --',
       showCancelButton: true,
       confirmButtonColor: '#d6006e'
     });
-    if (!manualName) return;
-    finalProductName = manualName;
-  }
 
-  // 4. Baru masukkan ke daftar (Render ke bawah)
-  renderNewItem(selectedCounter, finalProductName);
-  
-  // Script otomatis scroll ke item paling baru agar tidak "hilang" lagi
-  const container = document.getElementById('item-container');
-  container.lastElementChild.scrollIntoView({ behavior: 'smooth' });
-}
+    if (!selectedCounter) return;
 
-  function updateByCounterTester(el) {
-  const row = el.closest('.item-row');
-  const area = row.querySelector('.product-input-area');
-  const cat = el.value;
-
-  if (cat === "OTHERS") {
-    area.innerHTML = `
-      <label class="small text-muted" style="font-size:10px">Nama Produk:</label>
-      <input type="text" class="form-control form-control-sm item-nama-val" placeholder="Ketik manual..." oninput="saveProgress()">`;
-  } else if (cat === "") {
-    // Balikkan ke semua produk jika pilih "Semua Counter"
-    refreshProductDropdown(row, null);
-  } else {
-    // Filter produk berdasarkan counter yang dipilih
-    refreshProductDropdown(row, cat);
-  }
-  saveProgress();
-}
-
-function refreshProductDropdown(row, category) {
-  const area = row.querySelector('.product-input-area');
-  let options = `<option value="">-- Pilih Produk --</option>`;
-  
-  if (category) {
-    MASTER_PRODUK[category].forEach(p => {
-      options += `<option value="${p}" data-cat="${category}">${p}</option>`;
+    const products = MASTER_PRODUK[selectedCounter].sort();
+    const { value: selectedProduct } = await Swal.fire({
+      title: `Produk di ${selectedCounter}`,
+      input: 'select',
+      inputOptions: {
+        ...Object.fromEntries(products.map(p => [p, p])),
+        'MANUAL_INPUT': '[ + ] KETIK NAMA MANUAL'
+      },
+      inputPlaceholder: '-- Pilih Menu --',
+      showCancelButton: true,
+      confirmButtonColor: '#d6006e'
     });
-  } else {
-    Object.keys(MASTER_PRODUK).forEach(cat => {
-      MASTER_PRODUK[cat].forEach(p => {
-        options += `<option value="${p}" data-cat="${cat}">${p}</option>`;
+
+    if (!selectedProduct) return;
+
+    let finalProductName = selectedProduct;
+
+    if (selectedProduct === 'MANUAL_INPUT') {
+      const { value: manualName } = await Swal.fire({
+        title: 'Ketik Nama Produk',
+        input: 'text',
+        inputPlaceholder: 'Contoh: Nasi Goreng Spesial',
+        showCancelButton: true,
+        confirmButtonColor: '#d6006e'
       });
-    });
-  }
-  options += `<option value="MANUAL_INPUT" style="font-weight:bold; color:blue;">[ + ] KETIK NAMA MANUAL</option>`;
-  
-  area.innerHTML = `
-    <label class="small text-muted" style="font-size:10px">Pilih Produk:</label>
-    <select class="form-select form-select-sm item-nama-val" onchange="updateByProductTester(this)">
-      ${options}
-    </select>`;
-}
-
-  function updateByProductTester(el) {
-  const row = el.closest('.item-row');
-  if (el.value === "MANUAL_INPUT") {
-    row.querySelector('.product-input-area').innerHTML = `
-      <label class="small text-muted" style="font-size:10px">Nama Produk:</label>
-      <div class="input-group input-group-sm">
-        <input type="text" class="form-control item-nama-val" placeholder="Nama menu..." oninput="saveProgress()">
-        <button class="btn btn-outline-secondary" type="button" onclick="cancelManualTester(this)">✖</button>
-      </div>`;
-  } else {
-    const selectedOption = el.options[el.selectedIndex];
-    const cat = selectedOption.getAttribute('data-cat');
-    if (cat) {
-      row.querySelector('.item-counter').value = cat;
+      if (!manualName) return;
+      finalProductName = manualName;
     }
+
+    // Item yang ditambahkan lewat tombol ini SELALU ditandai sumber MANUAL,
+    // supaya nanti server tahu ini perlu disimpan balik ke pic_submissions.
+    renderNewItem(selectedCounter, finalProductName);
+
+    const container = document.getElementById('item-container');
+    container.lastElementChild.scrollIntoView({ behavior: 'smooth' });
   }
-  saveProgress();
-}
 
-function renderNewItem(counter, nama) {
-  const container = document.getElementById('item-container');
-  const itemCount = container.querySelectorAll('.item-row').length + 1;
-  const div = document.createElement('div');
-  div.className = 'item-row shadow-sm border-start border-primary border-4 animate__animated animate__fadeInUp';
-  
-  const uniqueId = Date.now();
-  div.innerHTML = `
-    <div class="d-flex justify-content-between align-items-center mb-1">
-      <div class="fw-bold small text-primary"><span class="text-dark">#${itemCount}</span> - ${counter}</div>
-      <a href="javascript:void(0)" class="text-danger small" onclick="this.closest('.item-row').remove(); saveProgress(); updateNumbers();">Hapus</a>
-    </div>
-    <div class="mb-2 fw-bold text-uppercase" style="font-size: 0.9rem;">${nama}</div>
-    
-    <input type="hidden" class="item-counter" value="${counter}">
-    <input type="hidden" class="item-nama-val" value="${nama}">
+  function refreshProductDropdown(row, category) {
+    const area = row.querySelector('.product-input-area');
+    let options = `<option value="">-- Pilih Produk --</option>`;
 
-    <div class="star-rating mb-2">
-      <input type="radio" name="r-${uniqueId}" value="3" id="3-${uniqueId}" checked onchange="saveProgress()"><label for="3-${uniqueId}"></label>
-      <input type="radio" name="r-${uniqueId}" value="2" id="2-${uniqueId}" onchange="saveProgress()"><label for="2-${uniqueId}"></label>
-      <input type="radio" name="r-${uniqueId}" value="1" id="1-${uniqueId}" onchange="saveProgress()"><label for="1-${uniqueId}"></label>
-    </div>
-    <input type="text" class="form-control form-control-sm item-comment" placeholder="Tambah catatan (opsional)..." oninput="saveProgress()">
-  `;
-  container.appendChild(div);
-  saveProgress();
-}
+    if (category) {
+      MASTER_PRODUK[category].forEach(p => {
+        options += `<option value="${p}" data-cat="${category}">${p}</option>`;
+      });
+    } else {
+      Object.keys(MASTER_PRODUK).forEach(cat => {
+        MASTER_PRODUK[cat].forEach(p => {
+          options += `<option value="${p}" data-cat="${cat}">${p}</option>`;
+        });
+      });
+    }
+    options += `<option value="MANUAL_INPUT" style="font-weight:bold; color:blue;">[ + ] KETIK NAMA MANUAL</option>`;
 
-  function cancelManualTester(btn) {
-  const row = btn.closest('.item-row');
-  const counterVal = row.querySelector('.item-counter').value;
-  refreshProductDropdown(row, counterVal || null);
-}
+    area.innerHTML = `
+      <label class="small text-muted" style="font-size:10px">Pilih Produk:</label>
+      <select class="form-select form-select-sm item-nama-val" onchange="updateByProductTester(this)">
+        ${options}
+      </select>`;
+  }
 
-  // --- FUNGSI PROGRESS, DRAFT, REVISI (TETAP SAMA) ---
+  // Item baru dari tombol "Tambah Produk Manual" => source = MANUAL
+  function renderNewItem(counter, nama) {
+    const container = document.getElementById('item-container');
+    const itemCount = container.querySelectorAll('.item-row').length + 1;
+    const div = document.createElement('div');
+    div.className = 'item-row shadow-sm border-start border-primary border-4';
+
+    const uniqueId = Date.now();
+    div.innerHTML = `
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <div class="fw-bold small text-primary">
+          <span class="text-dark">#${itemCount}</span> - ${counter}
+          <span class="badge-manual">MANUAL</span>
+        </div>
+        <a href="javascript:void(0)" class="text-danger small" onclick="this.closest('.item-row').remove(); saveProgress(); updateNumbers();">Hapus</a>
+      </div>
+      <div class="mb-2 fw-bold text-uppercase" style="font-size: 0.9rem;">${nama}</div>
+
+      <input type="hidden" class="item-counter" value="${counter}">
+      <input type="hidden" class="item-nama-val" value="${nama}">
+      <input type="hidden" class="item-source" value="MANUAL">
+
+      <div class="star-rating mb-2">
+        <input type="radio" name="r-${uniqueId}" value="3" id="3-${uniqueId}" checked onchange="saveProgress()"><label for="3-${uniqueId}"></label>
+        <input type="radio" name="r-${uniqueId}" value="2" id="2-${uniqueId}" onchange="saveProgress()"><label for="2-${uniqueId}"></label>
+        <input type="radio" name="r-${uniqueId}" value="1" id="1-${uniqueId}" onchange="saveProgress()"><label for="1-${uniqueId}"></label>
+      </div>
+      <input type="text" class="form-control form-control-sm item-comment" placeholder="Tambah catatan (opsional)..." oninput="saveProgress()">
+    `;
+    container.appendChild(div);
+    saveProgress();
+  }
+
   function saveProgress() {
     const items = [];
     document.querySelectorAll('.item-row').forEach(row => {
       const n = row.querySelector('.item-nama-val')?.value;
       const c = row.querySelector('.item-counter')?.value;
+      const src = row.querySelector('.item-source')?.value || 'PIC';
       if(n && n !== "MANUAL") {
         items.push({
           counter: c || "",
           nama: n,
           nilai: row.querySelector('input:checked')?.value || "3",
-          comment: row.querySelector('.item-comment')?.value || ""
+          comment: row.querySelector('.item-comment')?.value || "",
+          source: src
         });
       }
     });
@@ -337,19 +292,23 @@ function renderNewItem(counter, nama) {
     }
   }
 
+  // item.source dipertahankan kalau draft lama sudah punya, default 'PIC' kalau belum ada
   function renderItemRow(item, i) {
     const container = document.getElementById('item-container');
     const div = document.createElement('div');
     div.className = 'item-row shadow-sm';
     const uniqueId = Date.now() + i;
+    const source = item.source || 'PIC';
+    const badge = source === 'MANUAL' ? '<span class="badge-manual">MANUAL</span>' : '';
     div.innerHTML = `
       <div class="d-flex justify-content-between align-items-center mb-1">
-        <div class="fw-bold small text-primary"><span class="text-dark">#</span> - ${item.counter}</div>
+        <div class="fw-bold small text-primary"><span class="text-dark">#</span> - ${item.counter} ${badge}</div>
         <a href="javascript:void(0)" class="text-danger small" onclick="this.closest('.item-row').remove(); saveProgress(); updateNumbers();">Hapus</a>
       </div>
       <div class="mb-2 fw-semibold">${item.nama}</div>
       <input type="hidden" class="item-nama-val" value="${item.nama}">
       <input type="hidden" class="item-counter" value="${item.counter}">
+      <input type="hidden" class="item-source" value="${source}">
       <div class="star-rating mb-2">
         <input type="radio" name="r-${uniqueId}" value="3" id="3-${uniqueId}" ${item.nilai == '3' ? 'checked' : ''} onchange="saveProgress()"><label for="3-${uniqueId}"></label>
         <input type="radio" name="r-${uniqueId}" value="2" id="2-${uniqueId}" ${item.nilai == '2' ? 'checked' : ''} onchange="saveProgress()"><label for="2-${uniqueId}"></label>
@@ -368,6 +327,7 @@ function renderNewItem(counter, nama) {
     });
   }
 
+  // Item dari PIC => source = PIC (default di renderItemRow kalau tidak di-set eksplisit)
   async function loadPIC() {
     const t = document.getElementById('tanggal').value;
     const w = document.getElementById('waktu').value;
@@ -378,7 +338,7 @@ function renderNewItem(counter, nama) {
     btn.disabled = false; btn.innerHTML = "📥 AMBIL DATA PRODUK DARI PIC";
     if(!res.success) return alert(res.message);
     document.getElementById('item-container').innerHTML = '';
-    res.items.forEach((item, i) => renderItemRow({ counter: item.counter, nama: item.nama, nilai: "3", comment: "" }, i));
+    res.items.forEach((item, i) => renderItemRow({ counter: item.counter, nama: item.nama, nilai: "3", comment: "", source: 'PIC' }, i));
     saveProgress();
   }
 
@@ -394,7 +354,8 @@ function renderNewItem(counter, nama) {
           counter: row.querySelector('.item-counter')?.value || "",
           nama: n,
           nilai: row.querySelector('input:checked')?.value || "3",
-          comment: row.querySelector('.item-comment')?.value || ""
+          comment: row.querySelector('.item-comment')?.value || "",
+          source: row.querySelector('.item-source')?.value || 'PIC'
         });
       }
     });
@@ -436,7 +397,8 @@ function renderNewItem(counter, nama) {
           counter: row.querySelector('.item-counter').value,
           nama: n,
           nilai: row.querySelector('input:checked')?.value || "3",
-          comment: row.querySelector('.item-comment').value
+          comment: row.querySelector('.item-comment').value,
+          source: row.querySelector('.item-source')?.value || 'PIC'
         });
       }
     });

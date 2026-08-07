@@ -6,8 +6,6 @@ import { getDriveClient } from './googleDrive';
 const SOURCE_SHEET_ID = process.env.GOOGLE_SHEET_ID!;
 const DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID!;
 
-// Posisi baris tiap counter di Template_PDF, persis meniru counterMap di processForm() lama.
-// Kalau layout Template_PDF pernah diubah, angka-angka ini juga perlu disesuaikan.
 const COUNTER_MAP: Record<string, number> = {
   SUSHI: 6,
   MINISTOP: 9,
@@ -21,31 +19,34 @@ const COUNTER_MAP: Record<string, number> = {
   OTHERS: 33,
 };
 
-/**
- * Membuat PDF laporan test food memakai sheet "Template_PDF" sebagai cetakan,
- * lalu menyimpannya ke folder Google Drive (GOOGLE_DRIVE_FOLDER_ID).
- *
- * Alurnya meniru persis processForm() di Apps Script lama:
- * 1. Salin sheet Template_PDF ke spreadsheet sementara
- * 2. Isi tanggal, shift, MOD, tester, daftar produk per counter, tanda tangan
- * 3. Export sheet itu sebagai PDF lewat endpoint export bawaan Google Sheets
- * 4. Upload hasil PDF ke folder Drive
- * 5. Hapus spreadsheet sementara
- */
+// Mengecek apakah sebuah URL benar-benar bisa diakses publik tanpa autentikasi,
+// persis seperti Google akan mengaksesnya saat merender formula IMAGE().
+// Kalau gagal, kita tahu penyebab #REF! adalah URL-nya sendiri, bukan hal lain.
+async function isPubliclyReachableImage(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(url, { method: 'GET' });
+    if (!res.ok) return false;
+    const contentType = res.headers.get('content-type') || '';
+    return contentType.startsWith('image/');
+  } catch {
+    return false;
+  }
+}
+
 export async function generatePdfFromTemplate(
   data: any,
   namaPic: string,
   sigPicUrl: string | null,
   supabase: any
-): Promise<string> {
+): Promise<{ url: string; warnings: string[] }> {
   const auth = getGoogleAuth();
   const sheets = getSheetsClient();
   const drive = getDriveClient();
+  const warnings: string[] = [];
 
   let tempSpreadsheetId: string | null = null;
 
   try {
-    // 1. Cari sheetId dari tab "Template_PDF" di spreadsheet sumber
     const meta = await sheets.spreadsheets.get({ spreadsheetId: SOURCE_SHEET_ID });
     const templateSheet = meta.data.sheets?.find((s) => s.properties?.title === 'Template_PDF');
     if (!templateSheet || templateSheet.properties?.sheetId == null) {
@@ -53,12 +54,6 @@ export async function generatePdfFromTemplate(
     }
     const templateSheetId = templateSheet.properties.sheetId;
 
-    // 2. Buat spreadsheet sementara LANGSUNG DI DALAM folder Drive yang sudah di-share.
-    //    Penting: kalau dibuat tanpa parent folder, file akan masuk ke "My Drive" milik
-    //    service account sendiri - dan service account mandiri (di luar Google Workspace)
-    //    tidak punya kuota penyimpanan pribadi, sehingga akan gagal dengan error izin.
-    //    Dengan membuat langsung di folder yang sudah di-share, kuota yang dipakai adalah
-    //    kuota pemilik folder, bukan kuota service account.
     const createRes = await drive.files.create({
       requestBody: {
         name: `Temp_${data.tanggal}_${data.waktu}`,
@@ -72,7 +67,6 @@ export async function generatePdfFromTemplate(
     const tempMeta = await sheets.spreadsheets.get({ spreadsheetId: tempSpreadsheetId });
     const defaultSheetId = tempMeta.data.sheets![0].properties!.sheetId!;
 
-    // 3. Salin sheet Template_PDF ke spreadsheet sementara
     const copyRes = await sheets.spreadsheets.sheets.copyTo({
       spreadsheetId: SOURCE_SHEET_ID,
       sheetId: templateSheetId,
@@ -80,16 +74,10 @@ export async function generatePdfFromTemplate(
     });
     const newSheetId = copyRes.data.sheetId!;
 
-    // 4. Hapus sheet default bawaan, ganti nama sheet hasil salinan jadi "Report",
-    //    dan atur coret PAGI/SORE - digabung jadi satu batchUpdate biar cepat
     const headerText = 'PAGI / SORE';
     const strikeStart = data.waktu === 'PAGI' ? 7 : 0;
     const strikeEnd = data.waktu === 'PAGI' ? 11 : 4;
 
-    // Susun textFormatRuns secara dinamis - startIndex TIDAK BOLEH sama dengan atau
-    // melebihi panjang teks (11 karakter). Kalau strikeEnd pas di ujung teks (kasus PAGI,
-    // strikeEnd=11), run "matikan coret" di akhir itu tidak perlu ditambahkan sama sekali,
-    // karena format otomatis berhenti begitu teksnya habis.
     const textFormatRuns: { startIndex: number; format: any }[] = [];
     if (strikeStart > 0) {
       textFormatRuns.push({ startIndex: 0, format: {} });
@@ -136,8 +124,7 @@ export async function generatePdfFromTemplate(
       },
     });
 
-    // 5. Upload tanda tangan MOD (base64 dari client) ke Supabase Storage supaya ada URL publik
-    //    (Google Sheets IMAGE() butuh URL yang bisa diakses publik, bukan base64 langsung)
+    // Upload tanda tangan MOD ke Supabase Storage
     let sigModUrl: string | null = null;
     if (data.sigMOD && typeof data.sigMOD === 'string' && data.sigMOD.startsWith('data:image')) {
       const base64 = data.sigMOD.split(',')[1];
@@ -149,10 +136,32 @@ export async function generatePdfFromTemplate(
       if (!error) {
         const { data: pub } = supabase.storage.from('signatures').getPublicUrl(fileName);
         sigModUrl = pub.publicUrl;
+      } else {
+        warnings.push(`Gagal upload TTD MOD ke Storage: ${error.message}`);
       }
     }
 
-    // 6. Susun semua nilai yang mau diisi ke template
+    // VERIFIKASI: cek beneran bisa diakses publik tanpa login, SEBELUM dipakai di formula IMAGE().
+    // Kalau gagal, jangan paksa masukkan formula (supaya tidak jadi #REF!) - catat sebagai warning saja.
+    if (sigModUrl) {
+      const reachable = await isPubliclyReachableImage(sigModUrl);
+      if (!reachable) {
+        warnings.push(
+          `TTD MOD tidak bisa diakses publik (cek policy bucket 'signatures' di Supabase Storage harus public/read). URL: ${sigModUrl}`
+        );
+        sigModUrl = null;
+      }
+    }
+    if (sigPicUrl) {
+      const reachable = await isPubliclyReachableImage(sigPicUrl);
+      if (!reachable) {
+        warnings.push(
+          `TTD PIC tidak bisa diakses publik (cek policy bucket 'signatures' di Supabase Storage harus public/read). URL: ${sigPicUrl}`
+        );
+        sigPicUrl = null;
+      }
+    }
+
     const valueRanges: { range: string; values: any[][] }[] = [
       { range: 'Report!B2', values: [[data.tanggal]] },
       { range: 'Report!E3', values: [[data.waktu === 'PAGI' ? '09:00 - 10:00' : '16:00 - 17:00']] },
@@ -165,8 +174,6 @@ export async function generatePdfFromTemplate(
       { range: 'Report!I35', values: [[(namaPic || 'PIC').toUpperCase()]] },
     ];
 
-    // Tanda tangan pakai formula =IMAGE() yang merender gambar dari URL langsung di dalam sel,
-    // ukuran 145x145px mode custom (mode 4), meniru setWidth(145)/setHeight(75) di kode lama
     if (sigModUrl) {
       valueRanges.push({ range: 'Report!H29', values: [[`=IMAGE("${sigModUrl}",4,75,145)`]] });
     }
@@ -174,7 +181,6 @@ export async function generatePdfFromTemplate(
       valueRanges.push({ range: 'Report!I29', values: [[`=IMAGE("${sigPicUrl}",4,75,145)`]] });
     }
 
-    // Isi baris produk per counter, logika persis sama seperti processForm() lama
     const counts: Record<string, number> = {};
     Object.keys(COUNTER_MAP).forEach((k) => (counts[k] = 0));
 
@@ -200,10 +206,12 @@ export async function generatePdfFromTemplate(
       requestBody: { valueInputOption: 'USER_ENTERED', data: valueRanges },
     });
 
-    // 7. Beri jeda sebentar supaya formula =IMAGE() selesai memuat gambar sebelum di-export
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    // Jeda lebih panjang (8 detik) supaya formula IMAGE() sempat selesai mengambil gambar
+    // sebelum sheet di-export. Race condition ini penyebab umum #REF! kalau URL sebenarnya valid.
+    if (sigModUrl || sigPicUrl) {
+      await new Promise((resolve) => setTimeout(resolve, 8000));
+    }
 
-    // 8. Export sheet sebagai PDF lewat endpoint export bawaan Google Sheets
     const accessTokenRes = await auth.getAccessToken();
     const accessToken = typeof accessTokenRes === 'string' ? accessTokenRes : accessTokenRes?.token;
     if (!accessToken) throw new Error('Gagal mendapatkan access token Google.');
@@ -218,7 +226,6 @@ export async function generatePdfFromTemplate(
     }
     const pdfBuffer = Buffer.from(await pdfRes.arrayBuffer());
 
-    // 9. Upload PDF ke folder Google Drive
     const fileName = `Report_TestFood_${data.tanggal}_${data.waktu}.pdf`;
     const driveRes = await drive.files.create({
       requestBody: { name: fileName, parents: [DRIVE_FOLDER_ID] },
@@ -228,10 +235,6 @@ export async function generatePdfFromTemplate(
 
     const fileId = driveRes.data.id!;
 
-    // 10. Coba buka akses "siapa saja yang punya link bisa lihat".
-    //     Kalau kebijakan Google Workspace organisasi memblokir sharing publik,
-    //     langkah ini boleh gagal - PDF-nya tetap tersimpan di folder Drive,
-    //     tinggal diakses oleh siapa saja yang sudah punya akses ke folder itu.
     try {
       await drive.permissions.create({
         fileId,
@@ -241,14 +244,14 @@ export async function generatePdfFromTemplate(
       console.error('Gagal set permission publik (dilewati, file tetap tersimpan):', permErr?.message || permErr);
     }
 
-    return driveRes.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
+    const url = driveRes.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
+    return { url, warnings };
   } finally {
-    // 11. Hapus spreadsheet sementara apapun hasilnya, supaya Drive tidak numpuk file sampah
     if (tempSpreadsheetId) {
       try {
         await drive.files.delete({ fileId: tempSpreadsheetId });
       } catch {
-        // gagal hapus bukan fatal, cuma nyisa 1 file - diamkan
+        // gagal hapus bukan fatal
       }
     }
   }

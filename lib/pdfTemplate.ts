@@ -19,9 +19,50 @@ const COUNTER_MAP: Record<string, number> = {
   OTHERS: 33,
 };
 
-// Mengecek apakah sebuah URL benar-benar bisa diakses publik tanpa autentikasi,
-// persis seperti Google akan mengaksesnya saat merender formula IMAGE().
-// Kalau gagal, kita tahu penyebab #REF! adalah URL-nya sendiri, bukan hal lain.
+// Cek apakah cell yang berisi formula IMAGE() sudah selesai me-render (tidak lagi error/loading).
+// Sheets API mengembalikan effectiveValue.errorValue kalau formula masih gagal/belum resolve.
+async function checkImageCellsResolved(sheets: any, spreadsheetId: string, ranges: string[]): Promise<boolean> {
+  const res = await sheets.spreadsheets.get({
+    spreadsheetId,
+    ranges,
+    fields: 'sheets.data.rowData.values.effectiveValue',
+  });
+
+  for (const sheet of res.data.sheets || []) {
+    for (const gridData of sheet.data || []) {
+      for (const row of gridData.rowData || []) {
+        for (const cell of row.values || []) {
+          if (!cell.effectiveValue || cell.effectiveValue.errorValue) {
+            return false; // masih error atau belum ada nilai sama sekali (masih loading)
+          }
+        }
+      }
+    }
+  }
+  return true;
+}
+
+// Tunggu sampai formula IMAGE() beres, dicek berulang (bukan cuma sleep diam beberapa detik).
+// Berhenti lebih awal begitu sudah resolve, tapi bisa menunggu lebih lama kalau memang lambat.
+async function waitForImagesReady(
+  sheets: any,
+  spreadsheetId: string,
+  ranges: string[],
+  maxAttempts = 7,
+  intervalMs = 2500
+): Promise<boolean> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await new Promise((r) => setTimeout(r, intervalMs));
+    try {
+      const resolved = await checkImageCellsResolved(sheets, spreadsheetId, ranges);
+      if (resolved) return true;
+    } catch {
+      // kalau gagal cek, coba lagi di attempt berikutnya
+    }
+  }
+  return false;
+}
+
 async function isPubliclyReachableImage(url: string): Promise<boolean> {
   try {
     const res = await fetch(url, { method: 'GET' });
@@ -141,27 +182,36 @@ export async function generatePdfFromTemplate(
       }
     }
 
-    // VERIFIKASI: cek beneran bisa diakses publik tanpa login, SEBELUM dipakai di formula IMAGE().
-    // Kalau gagal, jangan paksa masukkan formula (supaya tidak jadi #REF!) - catat sebagai warning saja.
-    if (sigModUrl) {
-      const reachable = await isPubliclyReachableImage(sigModUrl);
-      if (!reachable) {
-        warnings.push(
-          `TTD MOD tidak bisa diakses publik (cek policy bucket 'signatures' di Supabase Storage harus public/read). URL: ${sigModUrl}`
-        );
-        sigModUrl = null;
-      }
+    if (sigModUrl && !(await isPubliclyReachableImage(sigModUrl))) {
+      warnings.push(`TTD MOD tidak bisa diakses publik. URL: ${sigModUrl}`);
+      sigModUrl = null;
     }
-    if (sigPicUrl) {
-      const reachable = await isPubliclyReachableImage(sigPicUrl);
-      if (!reachable) {
-        warnings.push(
-          `TTD PIC tidak bisa diakses publik (cek policy bucket 'signatures' di Supabase Storage harus public/read). URL: ${sigPicUrl}`
-        );
-        sigPicUrl = null;
-      }
+    if (sigPicUrl && !(await isPubliclyReachableImage(sigPicUrl))) {
+      warnings.push(`TTD PIC tidak bisa diakses publik. URL: ${sigPicUrl}`);
+      sigPicUrl = null;
     }
 
+    // PENTING: tulis formula IMAGE() lebih dulu, TERPISAH dari data lain, supaya gambar
+    // punya waktu paling banyak untuk mulai di-fetch & dirender oleh Google sebelum export.
+    const imageRanges: string[] = [];
+    if (sigModUrl || sigPicUrl) {
+      const imageValueRanges: { range: string; values: any[][] }[] = [];
+      if (sigModUrl) {
+        imageValueRanges.push({ range: 'Report!H29', values: [[`=IMAGE("${sigModUrl}",4,75,145)`]] });
+        imageRanges.push('Report!H29');
+      }
+      if (sigPicUrl) {
+        imageValueRanges.push({ range: 'Report!I29', values: [[`=IMAGE("${sigPicUrl}",4,75,145)`]] });
+        imageRanges.push('Report!I29');
+      }
+      await sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: tempSpreadsheetId,
+        requestBody: { valueInputOption: 'USER_ENTERED', data: imageValueRanges },
+      });
+    }
+
+    // Isi sisa data (tanggal, MOD, tester, daftar produk per counter) - ini juga makan waktu
+    // beberapa detik, jadi otomatis menambah "waktu tunggu" untuk gambar tanpa sleep tambahan.
     const valueRanges: { range: string; values: any[][] }[] = [
       { range: 'Report!B2', values: [[data.tanggal]] },
       { range: 'Report!E3', values: [[data.waktu === 'PAGI' ? '09:00 - 10:00' : '16:00 - 17:00']] },
@@ -173,13 +223,6 @@ export async function generatePdfFromTemplate(
       { range: 'Report!H35', values: [[(data.mod || 'MOD').toUpperCase()]] },
       { range: 'Report!I35', values: [[(namaPic || 'PIC').toUpperCase()]] },
     ];
-
-    if (sigModUrl) {
-      valueRanges.push({ range: 'Report!H29', values: [[`=IMAGE("${sigModUrl}",4,75,145)`]] });
-    }
-    if (sigPicUrl) {
-      valueRanges.push({ range: 'Report!I29', values: [[`=IMAGE("${sigPicUrl}",4,75,145)`]] });
-    }
 
     const counts: Record<string, number> = {};
     Object.keys(COUNTER_MAP).forEach((k) => (counts[k] = 0));
@@ -206,10 +249,12 @@ export async function generatePdfFromTemplate(
       requestBody: { valueInputOption: 'USER_ENTERED', data: valueRanges },
     });
 
-    // Jeda lebih panjang (8 detik) supaya formula IMAGE() sempat selesai mengambil gambar
-    // sebelum sheet di-export. Race condition ini penyebab umum #REF! kalau URL sebenarnya valid.
-    if (sigModUrl || sigPicUrl) {
-      await new Promise((resolve) => setTimeout(resolve, 8000));
+    // Cek berulang sampai gambar benar-benar siap (bukan cuma sleep tetap) - maksimal ~17.5 detik total
+    if (imageRanges.length > 0) {
+      const ready = await waitForImagesReady(sheets, tempSpreadsheetId, imageRanges);
+      if (!ready) {
+        warnings.push('Tanda tangan mungkin belum sepenuhnya termuat saat PDF di-export (timeout menunggu render gambar dari Google).');
+      }
     }
 
     const accessTokenRes = await auth.getAccessToken();

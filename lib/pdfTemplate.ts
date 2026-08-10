@@ -27,6 +27,16 @@ const SIG_ROW_INDEX = 28;
 const SIG_WIDTH_PX = 145;
 const SIG_HEIGHT_PX = 75;
 
+// KALIBRASI MANUAL - ubah angka ini kalau posisi tanda tangan masih meleset.
+// Satuannya pixel dalam skala sheet asli (bukan pixel PDF), jadi konsisten
+// dipakai untuk kedua tanda tangan (MOD & PIC) sekaligus.
+//   OFFSET_Y_PX  positif = geser tanda tangan ke BAWAH, negatif = ke ATAS
+//   OFFSET_X_PX  positif = geser tanda tangan ke KANAN, negatif = ke KIRI
+// Dari hasil tes terakhir (tanda tangan kelihatan terlalu tinggi/nabrak header),
+// nilai Y digeser turun ~18px sebagai perkiraan awal.
+const OFFSET_X_PX = 0;
+const OFFSET_Y_PX = 18;
+
 // Kolom terakhir yang ikut tercetak di PDF (A..I = 9 kolom, index 0-8).
 // Dipakai untuk menghitung skala px->pt hasil export. Sesuaikan kalau layout template berubah.
 const LAST_PRINTED_COLUMN_INDEX = 8;
@@ -86,7 +96,7 @@ async function overlaySignatures(
   const { columnMetadata, rowMetadata } = await getGridMetadata(sheets, tempSpreadsheetId);
 
   const totalGridWidthPx = cumulativePixels(columnMetadata, LAST_PRINTED_COLUMN_INDEX + 1, 100);
-  const yTopPx = cumulativePixels(rowMetadata, SIG_ROW_INDEX, 21);
+  const yTopPx = cumulativePixels(rowMetadata, SIG_ROW_INDEX, 21) + OFFSET_Y_PX;
 
   const pdfDoc = await PDFDocument.load(pdfBuffer);
   const page = pdfDoc.getPages()[0];
@@ -99,7 +109,7 @@ async function overlaySignatures(
   const yPt = pageHeightPt - yTopPx * scale - imgHeightPt;
 
   async function draw(url: string, colIndex: number) {
-    const xLeftPx = cumulativePixels(columnMetadata, colIndex, 100);
+    const xLeftPx = cumulativePixels(columnMetadata, colIndex, 100) + OFFSET_X_PX;
     const xPt = xLeftPx * scale;
 
     const imgRes = await fetch(url);

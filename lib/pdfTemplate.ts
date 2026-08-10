@@ -34,8 +34,8 @@ const SIG_HEIGHT_PX = 75;
 //   OFFSET_X_PX  positif = geser tanda tangan ke KANAN, negatif = ke KIRI
 // Dari hasil tes terakhir (tanda tangan kelihatan terlalu tinggi/nabrak header),
 // nilai Y digeser turun ~18px sebagai perkiraan awal.
-const OFFSET_X_PX = 0;
-const OFFSET_Y_PX = 18;
+const OFFSET_X_PX = -10;
+const OFFSET_Y_PX = 8;
 
 // Kolom terakhir yang ikut tercetak di PDF (A..I = 9 kolom, index 0-8).
 // Dipakai untuk menghitung skala px->pt hasil export. Sesuaikan kalau layout template berubah.

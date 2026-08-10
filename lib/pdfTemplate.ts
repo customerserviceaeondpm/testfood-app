@@ -1,4 +1,5 @@
 import { Readable } from 'stream';
+import { PDFDocument } from 'pdf-lib';
 import { getGoogleAuth } from './googleAuth';
 import { getSheetsClient } from './googleSheets';
 import { getDriveClient } from './googleDrive';
@@ -19,49 +20,16 @@ const COUNTER_MAP: Record<string, number> = {
   OTHERS: 33,
 };
 
-// Cek apakah cell yang berisi formula IMAGE() sudah selesai me-render (tidak lagi error/loading).
-// Sheets API mengembalikan effectiveValue.errorValue kalau formula masih gagal/belum resolve.
-async function checkImageCellsResolved(sheets: any, spreadsheetId: string, ranges: string[]): Promise<boolean> {
-  const res = await sheets.spreadsheets.get({
-    spreadsheetId,
-    ranges,
-    fields: 'sheets.data.rowData.values.effectiveValue',
-  });
+// Posisi sel tanda tangan di template (0-indexed): kolom H=7, I=8; baris 29 -> index 28
+const SIG_MOD_COL = 7;
+const SIG_PIC_COL = 8;
+const SIG_ROW_INDEX = 28;
+const SIG_WIDTH_PX = 145;
+const SIG_HEIGHT_PX = 75;
 
-  for (const sheet of res.data.sheets || []) {
-    for (const gridData of sheet.data || []) {
-      for (const row of gridData.rowData || []) {
-        for (const cell of row.values || []) {
-          if (!cell.effectiveValue || cell.effectiveValue.errorValue) {
-            return false; // masih error atau belum ada nilai sama sekali (masih loading)
-          }
-        }
-      }
-    }
-  }
-  return true;
-}
-
-// Tunggu sampai formula IMAGE() beres, dicek berulang (bukan cuma sleep diam beberapa detik).
-// Berhenti lebih awal begitu sudah resolve, tapi bisa menunggu lebih lama kalau memang lambat.
-async function waitForImagesReady(
-  sheets: any,
-  spreadsheetId: string,
-  ranges: string[],
-  maxAttempts = 7,
-  intervalMs = 2500
-): Promise<boolean> {
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    await new Promise((r) => setTimeout(r, intervalMs));
-    try {
-      const resolved = await checkImageCellsResolved(sheets, spreadsheetId, ranges);
-      if (resolved) return true;
-    } catch {
-      // kalau gagal cek, coba lagi di attempt berikutnya
-    }
-  }
-  return false;
-}
+// Kolom terakhir yang ikut tercetak di PDF (A..I = 9 kolom, index 0-8).
+// Dipakai untuk menghitung skala px->pt hasil export. Sesuaikan kalau layout template berubah.
+const LAST_PRINTED_COLUMN_INDEX = 8;
 
 async function isPubliclyReachableImage(url: string): Promise<boolean> {
   try {
@@ -74,10 +42,83 @@ async function isPubliclyReachableImage(url: string): Promise<boolean> {
   }
 }
 
+async function getGridMetadata(sheets: any, spreadsheetId: string) {
+  const res = await sheets.spreadsheets.get({
+    spreadsheetId,
+    ranges: ['Report'],
+    fields: 'sheets.data.rowMetadata,sheets.data.columnMetadata',
+  });
+  const gridData = res.data.sheets?.[0]?.data?.[0];
+  return {
+    columnMetadata: gridData?.columnMetadata || [],
+    rowMetadata: gridData?.rowMetadata || [],
+  };
+}
+
+// Jumlah pixel kumulatif dari kolom/baris ke-0 sampai sebelum index tertentu.
+// Default 100px kolom / 21px baris dipakai kalau metadata tidak menyebutkan ukuran eksplisit.
+function cumulativePixels(metadataList: any[], count: number, defaultPx: number): number {
+  let total = 0;
+  for (let i = 0; i < count; i++) {
+    total += metadataList[i]?.pixelSize ?? defaultPx;
+  }
+  return total;
+}
+
+/**
+ * Tempelkan gambar tanda tangan langsung ke PDF hasil export, dihitung dari posisi
+ * kolom/baris asli di template (dikonversi ke satuan poin PDF pakai skala hasil export).
+ *
+ * Kenapa begini, bukan formula IMAGE() di sheet: Google Sheets API v4 tidak selalu
+ * benar-benar merender formula IMAGE() saat diakses murni lewat API (berbeda dari saat
+ * dibuka manual di browser), dan API ini juga tidak menyediakan cara menyisipkan gambar
+ * mengambang (floating image) seperti SpreadsheetApp.insertImage() di Apps Script -
+ * itu fitur khusus Apps Script yang tidak diekspos di REST API. Jadi gambar ditempel
+ * langsung ke file PDF akhir, bukan dititipkan ke proses render Google.
+ */
+async function overlaySignatures(
+  pdfBuffer: Buffer,
+  sheets: any,
+  tempSpreadsheetId: string,
+  sigModUrl: string | null,
+  sigPicUrl: string | null
+): Promise<any> {
+  const { columnMetadata, rowMetadata } = await getGridMetadata(sheets, tempSpreadsheetId);
+
+  const totalGridWidthPx = cumulativePixels(columnMetadata, LAST_PRINTED_COLUMN_INDEX + 1, 100);
+  const yTopPx = cumulativePixels(rowMetadata, SIG_ROW_INDEX, 21);
+
+  const pdfDoc = await PDFDocument.load(pdfBuffer);
+  const page = pdfDoc.getPages()[0];
+  const pageWidthPt = page.getWidth();
+  const pageHeightPt = page.getHeight();
+  const scale = pageWidthPt / totalGridWidthPx;
+
+  const imgWidthPt = SIG_WIDTH_PX * scale;
+  const imgHeightPt = SIG_HEIGHT_PX * scale;
+  const yPt = pageHeightPt - yTopPx * scale - imgHeightPt;
+
+  async function draw(url: string, colIndex: number) {
+    const xLeftPx = cumulativePixels(columnMetadata, colIndex, 100);
+    const xPt = xLeftPx * scale;
+
+    const imgRes = await fetch(url);
+    const imgBytes = new Uint8Array(await imgRes.arrayBuffer());
+    const pngImage = await pdfDoc.embedPng(imgBytes);
+    page.drawImage(pngImage, { x: xPt, y: yPt, width: imgWidthPt, height: imgHeightPt });
+  }
+
+  if (sigModUrl) await draw(sigModUrl, SIG_MOD_COL);
+  if (sigPicUrl) await draw(sigPicUrl, SIG_PIC_COL);
+
+  const savedBytes = await pdfDoc.save();
+  return Buffer.from(savedBytes) as any;
+}
+
 export async function generatePdfFromTemplate(
   data: any,
   namaPic: string,
-  sigPicUrl: string | null,
+  sigPicUrlInput: string | null,
   supabase: any
 ): Promise<{ url: string; warnings: string[] }> {
   const auth = getGoogleAuth();
@@ -89,7 +130,7 @@ export async function generatePdfFromTemplate(
 
   try {
     const meta = await sheets.spreadsheets.get({ spreadsheetId: SOURCE_SHEET_ID });
-    const templateSheet = meta.data.sheets?.find((s) => s.properties?.title === 'Template_PDF');
+    const templateSheet = meta.data.sheets?.find((s: any) => s.properties?.title === 'Template_PDF');
     if (!templateSheet || templateSheet.properties?.sheetId == null) {
       throw new Error('Sheet "Template_PDF" tidak ditemukan di spreadsheet sumber.');
     }
@@ -182,6 +223,7 @@ export async function generatePdfFromTemplate(
       }
     }
 
+    let sigPicUrl = sigPicUrlInput;
     if (sigModUrl && !(await isPubliclyReachableImage(sigModUrl))) {
       warnings.push(`TTD MOD tidak bisa diakses publik. URL: ${sigModUrl}`);
       sigModUrl = null;
@@ -191,27 +233,8 @@ export async function generatePdfFromTemplate(
       sigPicUrl = null;
     }
 
-    // PENTING: tulis formula IMAGE() lebih dulu, TERPISAH dari data lain, supaya gambar
-    // punya waktu paling banyak untuk mulai di-fetch & dirender oleh Google sebelum export.
-    const imageRanges: string[] = [];
-    if (sigModUrl || sigPicUrl) {
-      const imageValueRanges: { range: string; values: any[][] }[] = [];
-      if (sigModUrl) {
-        imageValueRanges.push({ range: 'Report!H29', values: [[`=IMAGE("${sigModUrl}",4,75,145)`]] });
-        imageRanges.push('Report!H29');
-      }
-      if (sigPicUrl) {
-        imageValueRanges.push({ range: 'Report!I29', values: [[`=IMAGE("${sigPicUrl}",4,75,145)`]] });
-        imageRanges.push('Report!I29');
-      }
-      await sheets.spreadsheets.values.batchUpdate({
-        spreadsheetId: tempSpreadsheetId,
-        requestBody: { valueInputOption: 'USER_ENTERED', data: imageValueRanges },
-      });
-    }
-
-    // Isi sisa data (tanggal, MOD, tester, daftar produk per counter) - ini juga makan waktu
-    // beberapa detik, jadi otomatis menambah "waktu tunggu" untuk gambar tanpa sleep tambahan.
+    // Isi data teks (tanggal, MOD, tester, daftar produk per counter).
+    // Tanda tangan TIDAK ditulis sebagai formula IMAGE() di sini - lihat overlaySignatures().
     const valueRanges: { range: string; values: any[][] }[] = [
       { range: 'Report!B2', values: [[data.tanggal]] },
       { range: 'Report!E3', values: [[data.waktu === 'PAGI' ? '09:00 - 10:00' : '16:00 - 17:00']] },
@@ -249,14 +272,6 @@ export async function generatePdfFromTemplate(
       requestBody: { valueInputOption: 'USER_ENTERED', data: valueRanges },
     });
 
-    // Cek berulang sampai gambar benar-benar siap (bukan cuma sleep tetap) - maksimal ~17.5 detik total
-    if (imageRanges.length > 0) {
-      const ready = await waitForImagesReady(sheets, tempSpreadsheetId, imageRanges);
-      if (!ready) {
-        warnings.push('Tanda tangan mungkin belum sepenuhnya termuat saat PDF di-export (timeout menunggu render gambar dari Google).');
-      }
-    }
-
     const accessTokenRes = await auth.getAccessToken();
     const accessToken = typeof accessTokenRes === 'string' ? accessTokenRes : accessTokenRes?.token;
     if (!accessToken) throw new Error('Gagal mendapatkan access token Google.');
@@ -269,7 +284,16 @@ export async function generatePdfFromTemplate(
     if (!pdfRes.ok) {
       throw new Error(`Gagal export PDF dari Google Sheets (status ${pdfRes.status})`);
     }
-    const pdfBuffer = Buffer.from(await pdfRes.arrayBuffer());
+    let pdfBuffer = Buffer.from(await pdfRes.arrayBuffer());
+
+    // Tempel tanda tangan langsung ke PDF hasil export
+    if (sigModUrl || sigPicUrl) {
+      try {
+        pdfBuffer = await overlaySignatures(pdfBuffer, sheets, tempSpreadsheetId, sigModUrl, sigPicUrl);
+      } catch (overlayErr: any) {
+        warnings.push('Gagal menempelkan tanda tangan ke PDF: ' + (overlayErr?.message || overlayErr.toString()));
+      }
+    }
 
     const fileName = `Report_TestFood_${data.tanggal}_${data.waktu}.pdf`;
     const driveRes = await drive.files.create({

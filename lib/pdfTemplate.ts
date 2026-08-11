@@ -20,22 +20,12 @@ const COUNTER_MAP: Record<string, number> = {
   OTHERS: 33,
 };
 
-// Posisi sel tanda tangan di template (0-indexed): kolom H=7, I=8; baris 29 -> index 28
-const SIG_MOD_COL = 7;
-const SIG_PIC_COL = 8;
-const SIG_ROW_INDEX = 28;
-const SIG_WIDTH_PX = 145;
-const SIG_HEIGHT_PX = 75;
+// Sel anchor tempat tanda tangan seharusnya berada di template (0-indexed): H29 dan I29
+const SIG_MOD_ANCHOR = { row: 28, col: 7 };
+const SIG_PIC_ANCHOR = { row: 28, col: 8 };
 
-// KALIBRASI MANUAL - ubah angka ini kalau posisi tanda tangan masih meleset.
-// Satuannya pixel dalam skala sheet asli (bukan pixel PDF), jadi konsisten
-// dipakai untuk kedua tanda tangan (MOD & PIC) sekaligus.
-//   OFFSET_Y_PX  positif = geser tanda tangan ke BAWAH, negatif = ke ATAS
-//   OFFSET_X_PX  positif = geser tanda tangan ke KANAN, negatif = ke KIRI
-// Dari hasil tes terakhir (tanda tangan kelihatan terlalu tinggi/nabrak header),
-// nilai Y digeser turun ~18px sebagai perkiraan awal.
-const OFFSET_X_PX = -10;
-const OFFSET_Y_PX = 8;
+// Padding kecil di dalam kotak (px skala sheet), meniru "Offset 2px" di kode Apps Script lama
+const BOX_PADDING_PX = 2;
 
 // Kolom terakhir yang ikut tercetak di PDF (A..I = 9 kolom, index 0-8).
 // Dipakai untuk menghitung skala px->pt hasil export. Sesuaikan kalau layout template berubah.
@@ -56,17 +46,18 @@ async function getGridMetadata(sheets: any, spreadsheetId: string) {
   const res = await sheets.spreadsheets.get({
     spreadsheetId,
     ranges: ['Report'],
-    fields: 'sheets.data.rowMetadata,sheets.data.columnMetadata',
+    fields: 'sheets.merges,sheets.data.rowMetadata,sheets.data.columnMetadata',
   });
-  const gridData = res.data.sheets?.[0]?.data?.[0];
+  const sheetData = res.data.sheets?.[0];
+  const gridData = sheetData?.data?.[0];
   return {
+    merges: sheetData?.merges || [],
     columnMetadata: gridData?.columnMetadata || [],
     rowMetadata: gridData?.rowMetadata || [],
   };
 }
 
 // Jumlah pixel kumulatif dari kolom/baris ke-0 sampai sebelum index tertentu.
-// Default 100px kolom / 21px baris dipakai kalau metadata tidak menyebutkan ukuran eksplisit.
 function cumulativePixels(metadataList: any[], count: number, defaultPx: number): number {
   let total = 0;
   for (let i = 0; i < count; i++) {
@@ -75,9 +66,27 @@ function cumulativePixels(metadataList: any[], count: number, defaultPx: number)
   return total;
 }
 
+// Cari merged cell yang menaungi sel anchor tertentu. Kalau sel itu ternyata
+// tidak digabung (bukan merge), anggap batasnya cuma sel itu sendiri (1x1).
+function findBoxRange(merges: any[], anchor: { row: number; col: number }) {
+  const merge = merges.find(
+    (m: any) =>
+      anchor.row >= m.startRowIndex && anchor.row < m.endRowIndex &&
+      anchor.col >= m.startColumnIndex && anchor.col < m.endColumnIndex
+  );
+  if (merge) return merge;
+  return {
+    startRowIndex: anchor.row,
+    endRowIndex: anchor.row + 1,
+    startColumnIndex: anchor.col,
+    endColumnIndex: anchor.col + 1,
+  };
+}
+
 /**
- * Tempelkan gambar tanda tangan langsung ke PDF hasil export, dihitung dari posisi
- * kolom/baris asli di template (dikonversi ke satuan poin PDF pakai skala hasil export).
+ * Tempelkan gambar tanda tangan langsung ke PDF hasil export, pas di dalam batas
+ * kotak tanda tangan ASLI di template (dibaca dari info merged cell-nya langsung,
+ * bukan tebakan offset manual) - dikonversi ke satuan poin PDF pakai skala hasil export.
  *
  * Kenapa begini, bukan formula IMAGE() di sheet: Google Sheets API v4 tidak selalu
  * benar-benar merender formula IMAGE() saat diakses murni lewat API (berbeda dari saat
@@ -93,10 +102,9 @@ async function overlaySignatures(
   sigModUrl: string | null,
   sigPicUrl: string | null
 ): Promise<any> {
-  const { columnMetadata, rowMetadata } = await getGridMetadata(sheets, tempSpreadsheetId);
+  const { merges, columnMetadata, rowMetadata } = await getGridMetadata(sheets, tempSpreadsheetId);
 
   const totalGridWidthPx = cumulativePixels(columnMetadata, LAST_PRINTED_COLUMN_INDEX + 1, 100);
-  const yTopPx = cumulativePixels(rowMetadata, SIG_ROW_INDEX, 21) + OFFSET_Y_PX;
 
   const pdfDoc = await PDFDocument.load(pdfBuffer);
   const page = pdfDoc.getPages()[0];
@@ -104,22 +112,29 @@ async function overlaySignatures(
   const pageHeightPt = page.getHeight();
   const scale = pageWidthPt / totalGridWidthPx;
 
-  const imgWidthPt = SIG_WIDTH_PX * scale;
-  const imgHeightPt = SIG_HEIGHT_PX * scale;
-  const yPt = pageHeightPt - yTopPx * scale - imgHeightPt;
+  async function draw(url: string, anchor: { row: number; col: number }) {
+    const box = findBoxRange(merges, anchor);
 
-  async function draw(url: string, colIndex: number) {
-    const xLeftPx = cumulativePixels(columnMetadata, colIndex, 100) + OFFSET_X_PX;
-    const xPt = xLeftPx * scale;
+    const leftPx = cumulativePixels(columnMetadata, box.startColumnIndex, 100) + BOX_PADDING_PX;
+    const rightPx = cumulativePixels(columnMetadata, box.endColumnIndex, 100) - BOX_PADDING_PX;
+    const topPx = cumulativePixels(rowMetadata, box.startRowIndex, 21) + BOX_PADDING_PX;
+    const bottomPx = cumulativePixels(rowMetadata, box.endRowIndex, 21) - BOX_PADDING_PX;
+
+    const boxWidthPt = Math.max(rightPx - leftPx, 1) * scale;
+    const boxHeightPt = Math.max(bottomPx - topPx, 1) * scale;
+
+    const xPt = leftPx * scale;
+    const yPt = pageHeightPt - bottomPx * scale; // PDF origin di kiri-bawah, sheet origin di kiri-atas
 
     const imgRes = await fetch(url);
     const imgBytes = new Uint8Array(await imgRes.arrayBuffer());
     const pngImage = await pdfDoc.embedPng(imgBytes);
-    page.drawImage(pngImage, { x: xPt, y: yPt, width: imgWidthPt, height: imgHeightPt });
+
+    page.drawImage(pngImage, { x: xPt, y: yPt, width: boxWidthPt, height: boxHeightPt });
   }
 
-  if (sigModUrl) await draw(sigModUrl, SIG_MOD_COL);
-  if (sigPicUrl) await draw(sigPicUrl, SIG_PIC_COL);
+  if (sigModUrl) await draw(sigModUrl, SIG_MOD_ANCHOR);
+  if (sigPicUrl) await draw(sigPicUrl, SIG_PIC_ANCHOR);
 
   const savedBytes = await pdfDoc.save();
   return Buffer.from(savedBytes) as any;

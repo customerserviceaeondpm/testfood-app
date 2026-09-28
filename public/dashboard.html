@@ -310,10 +310,13 @@
       if (data) {
         if (data.pagi && data.sore) status = 'bg-full';
         else if (data.pagi || data.sore) status = 'bg-half';
-      } else if (isCurrentMonth && d > today.getDate()) {
-        status = 'bg-future';
-      } else if (!isCurrentMonth && viewDate > today) {
-        status = 'bg-future';
+      } else {
+        // Cek apakah tanggal ini di masa depan
+        const currentDate = new Date(tahun, bulan - 1, d);
+        const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        if (currentDate > todayMidnight) {
+          status = 'bg-future';
+        }
       }
 
       const warningElement = (data && data.hasIssue) ? `<div class="issue-text">!</div><div class="issue-note"></div>` : '';

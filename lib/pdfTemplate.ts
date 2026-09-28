@@ -27,6 +27,13 @@ const SIG_PIC_ANCHOR = { row: 28, col: 8 };
 // Padding kecil di dalam kotak (px skala sheet), meniru "Offset 2px" di kode Apps Script lama
 const BOX_PADDING_PX = 2;
 
+// Margin halaman export PDF Google Sheets (pt). Export pakai margin default,
+// grid tidak mulai di 0,0 halaman. Tanpa ini X/Y selalu geser.
+const MARGIN_LEFT_PT = 36;
+const MARGIN_RIGHT_PT = 36;
+const MARGIN_TOP_PT = 36;
+const MARGIN_BOTTOM_PT = 36;
+
 // Kolom terakhir yang ikut tercetak di PDF (A..I = 9 kolom, index 0-8).
 // Dipakai untuk menghitung skala px->pt hasil export. Sesuaikan kalau layout template berubah.
 const LAST_PRINTED_COLUMN_INDEX = 8;
@@ -123,8 +130,10 @@ async function overlaySignatures(
     const boxWidthPt = Math.max(rightPx - leftPx, 1) * scale;
     const boxHeightPt = Math.max(bottomPx - topPx, 1) * scale;
 
-    const xPt = leftPx * scale;
-    const yPt = pageHeightPt - bottomPx * scale; // PDF origin di kiri-bawah, sheet origin di kiri-atas
+    // Google Sheets export PDF memasukkan margin default 36pt di semua sisi.
+    // Koordinat x, y perlu ditambah margin agar sesuai posisi sel di template.
+    const xPt = leftPx * scale + MARGIN_LEFT_PT;
+    const yPt = pageHeightPt - bottomPx * scale - MARGIN_TOP_PT; // PDF origin di kiri-bawah, sheet origin di kiri-atas
 
     const imgRes = await fetch(url);
     const imgBytes = new Uint8Array(await imgRes.arrayBuffer());

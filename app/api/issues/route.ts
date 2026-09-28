@@ -14,7 +14,8 @@ const supabase = getSupabase();
     .from('test_food_records')
     .select('tanggal, waktu, counter, nama_produk, nilai, komentar')
     .gte('tanggal', from)
-    .lte('tanggal', to);
+    .lte('tanggal', to)
+    .limit(10000);
 
   if (error) return Response.json([]);
 

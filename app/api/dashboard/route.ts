@@ -16,7 +16,8 @@ export async function GET(req: Request) {
     .from('test_food_records')
     .select('tanggal, waktu, nilai')
     .gte('tanggal', from)
-    .lte('tanggal', to);
+    .lte('tanggal', to)
+    .limit(10000);
 
   if (error) {
     console.error('[dashboard] Supabase error:', error);

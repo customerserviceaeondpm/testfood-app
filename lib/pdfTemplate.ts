@@ -268,7 +268,6 @@ export async function generatePdfFromTemplate(
     }
 
     // Isi data teks (tanggal, MOD, tester, daftar produk per counter).
-    // Tanda tangan TIDAK ditulis sebagai formula IMAGE() di sini - akan di-overlay via PDF-lib.
     const valueRanges: { range: string; values: any[][] }[] = [
       { range: 'Report!B2', values: [[data.tanggal]] },
       { range: 'Report!E3', values: [[data.waktu === 'PAGI' ? '09:00 - 10:00' : '16:00 - 17:00']] },
@@ -280,6 +279,14 @@ export async function generatePdfFromTemplate(
       { range: 'Report!H35', values: [[(data.mod || 'MOD').toUpperCase()]] },
       { range: 'Report!I35', values: [[(namaPic || 'PIC').toUpperCase()]] },
     ];
+
+    // Tambahkan formula IMAGE() untuk signature di H29 (MOD) dan I29 (PIC)
+    if (sigModUrl) {
+      valueRanges.push({ range: 'Report!H29', values: [[`=IMAGE("${sigModUrl}")`]] });
+    }
+    if (sigPicUrl) {
+      valueRanges.push({ range: 'Report!I29', values: [[`=IMAGE("${sigPicUrl}")`]] });
+    }
 
     const counts: Record<string, number> = {};
     Object.keys(COUNTER_MAP).forEach((k) => (counts[k] = 0));
@@ -318,16 +325,7 @@ export async function generatePdfFromTemplate(
     if (!pdfRes.ok) {
       throw new Error(`Gagal export PDF dari Google Sheets (status ${pdfRes.status})`);
     }
-    let pdfBuffer = Buffer.from(await pdfRes.arrayBuffer());
-
-    // Tempel tanda tangan langsung ke PDF hasil export
-    if (sigModUrl || sigPicUrl) {
-      try {
-        pdfBuffer = await overlaySignatures(pdfBuffer, sheets, tempSpreadsheetId, sigModUrl, sigPicUrl);
-      } catch (overlayErr: any) {
-        warnings.push('Gagal menempelkan tanda tangan ke PDF: ' + (overlayErr?.message || overlayErr.toString()));
-      }
-    }
+    const pdfBuffer = Buffer.from(await pdfRes.arrayBuffer());
 
     // Export spreadsheet sebagai .xlsx ke folder khusus
     const XLSX_FOLDER_ID = '1RnnandGlU_k4CBW2DcJlXHZNxHTwA7Xw';

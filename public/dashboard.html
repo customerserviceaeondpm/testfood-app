@@ -200,6 +200,26 @@
     <div class="counter-grid" id="counterGridContainer">
       </div>
   </div>
+
+  <div class="counter-section">
+    <div class="fw-bold text-secondary mb-2" style="font-size: 12px; letter-spacing: 0.5px;">
+      🔄 SINKRONISASI DATA
+    </div>
+    <div class="d-grid gap-2">
+      <button class="btn btn-sm btn-outline-primary" onclick="triggerSync('push-to-sheets')" id="btnPushSheets">
+        📤 Push ke Sheets
+      </button>
+      <button class="btn btn-sm btn-outline-success" onclick="triggerSync('pull-products')" id="btnPullProducts">
+        📥 Pull Products
+      </button>
+      <button class="btn btn-sm btn-outline-success" onclick="triggerSync('pull-database')" id="btnPullDatabase">
+        📥 Pull Database
+      </button>
+      <button class="btn btn-sm btn-outline-success" onclick="triggerSync('pull-pic')" id="btnPullPic">
+        📥 Pull PIC
+      </button>
+    </div>
+  </div>
 </div>
 
 <div class="modal fade" id="dateDetailModal" tabindex="-1" aria-hidden="true">
@@ -426,6 +446,51 @@
 
     const counterModal = new bootstrap.Modal(document.getElementById('counterIssueModal'));
     counterModal.show();
+  }
+
+  // --- TRIGGER SYNC API ---
+  async function triggerSync(endpoint) {
+    const btnId = `btn${endpoint.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('')}`;
+    const btn = document.getElementById(btnId);
+    
+    if (!btn) return;
+    
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Loading...';
+    
+    try {
+      const response = await fetch(`/api/sync/${endpoint}`);
+      const result = await response.json();
+      
+      if (response.ok) {
+        btn.classList.remove('btn-outline-primary', 'btn-outline-success');
+        btn.classList.add('btn-success');
+        btn.innerHTML = '✓ Sukses';
+        
+        setTimeout(() => {
+          btn.classList.remove('btn-success');
+          btn.classList.add(originalText.includes('Push') ? 'btn-outline-primary' : 'btn-outline-success');
+          btn.innerHTML = originalText;
+          btn.disabled = false;
+        }, 2000);
+      } else {
+        throw new Error(result.error || 'Sync gagal');
+      }
+    } catch (err) {
+      btn.classList.remove('btn-outline-primary', 'btn-outline-success');
+      btn.classList.add('btn-danger');
+      btn.innerHTML = '✗ Error';
+      
+      setTimeout(() => {
+        btn.classList.remove('btn-danger');
+        btn.classList.add(originalText.includes('Push') ? 'btn-outline-primary' : 'btn-outline-success');
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+      }, 2000);
+      
+      console.error('Sync error:', err);
+    }
   }
 </script>
 </body>

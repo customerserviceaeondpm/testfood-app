@@ -279,6 +279,15 @@
 
     // Ambil data utama kalender
     const res = await fetch(`/api/dashboard?bulan=${bulan}&tahun=${tahun}`).then(r => r.json());
+    console.log('Dashboard API response:', res);
+    console.log('Calendar map sample (day 20-25):', {
+      20: res.calendar[20],
+      21: res.calendar[21],
+      22: res.calendar[22],
+      23: res.calendar[23],
+      24: res.calendar[24],
+      25: res.calendar[25]
+    });
     drawCalendar(bulan, tahun, res.calendar);
 
     // Setelah data kalender selesai, ambil data ringkasan issue untuk tombol counter di bawahnya

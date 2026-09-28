@@ -449,6 +449,20 @@
   }
 
   // --- TRIGGER SYNC API ---
+  let syncSecret = '';
+
+  async function getSyncSecret() {
+    if (!syncSecret) {
+      try {
+        const res = await fetch('/api/config').then(r => r.json());
+        syncSecret = res.syncSecret || '';
+      } catch (e) {
+        console.error('Failed to get sync secret:', e);
+      }
+    }
+    return syncSecret;
+  }
+
   async function triggerSync(endpoint) {
     const btnId = `btn${endpoint.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('')}`;
     const btn = document.getElementById(btnId);
@@ -460,10 +474,12 @@
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Loading...';
     
     try {
-      const response = await fetch(`/api/sync/${endpoint}`);
+      const secret = await getSyncSecret();
+      const url = secret ? `/api/sync/${endpoint}?secret=${encodeURIComponent(secret)}` : `/api/sync/${endpoint}`;
+      const response = await fetch(url);
       const result = await response.json();
       
-      if (response.ok) {
+      if (response.ok && result.success !== false) {
         btn.classList.remove('btn-outline-primary', 'btn-outline-success');
         btn.classList.add('btn-success');
         btn.innerHTML = '✓ Sukses';
@@ -475,7 +491,7 @@
           btn.disabled = false;
         }, 2000);
       } else {
-        throw new Error(result.error || 'Sync gagal');
+        throw new Error(result.message || result.error || 'Sync gagal');
       }
     } catch (err) {
       btn.classList.remove('btn-outline-primary', 'btn-outline-success');
@@ -490,6 +506,7 @@
       }, 2000);
       
       console.error('Sync error:', err);
+      alert(`Sync error: ${err.message}`);
     }
   }
 </script>

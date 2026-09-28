@@ -126,10 +126,10 @@
 
   function resizeCanvas() {
     const ratio = Math.max(window.devicePixelRatio || 1, 1);
+    const ctx = canvas.getContext("2d");
     canvas.width = canvas.offsetWidth * ratio;
     canvas.height = canvas.offsetHeight * ratio;
-    canvas.getContext("2d").scale(ratio, ratio);
-    pad.clear();
+    ctx.scale(ratio, ratio);
   }
 
 
@@ -499,10 +499,15 @@
     }
     
     const dataUrl = modalSignaturePad.toDataURL();
-    pad.fromDataURL(dataUrl);
     
+    // Tampilkan canvas padMOD dulu sebelum load gambar
     document.getElementById('padMOD').style.display = 'block';
     document.getElementById('sigPlaceholder').style.display = 'none';
+    
+    // Hapus isi canvas sebelum load dataURL baru
+    pad.clear();
+    // Load gambar dan pastikan canvas sudah di-resize
+    pad.fromDataURL(dataUrl);
     
     bootstrap.Modal.getInstance(document.getElementById('signatureModal')).hide();
   }

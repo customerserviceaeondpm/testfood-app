@@ -312,7 +312,7 @@ export async function generatePdfFromTemplate(
 
     const exportUrl =
       `https://docs.google.com/spreadsheets/d/${tempSpreadsheetId}/export` +
-      `?format=pdf&size=A4&portrait=false&fitw=true&gridlines=false&gid=${newSheetId}`;
+      `?format=pdf&size=A4&portrait=false&fitw=false&gridlines=false&gid=${newSheetId}`;
 
     const pdfRes = await fetch(exportUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
     if (!pdfRes.ok) {

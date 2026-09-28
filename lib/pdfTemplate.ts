@@ -258,11 +258,14 @@ export async function generatePdfFromTemplate(
     }
 
     let sigPicUrl = sigPicUrlInput;
-    if (sigModUrl && !(await isPubliclyReachableImage(sigModUrl))) {
+    // Skip validasi untuk URL Supabase Storage
+    const isSupabaseUrl = (url: string) => url.includes('.supabase.co/storage/');
+    
+    if (sigModUrl && !isSupabaseUrl(sigModUrl) && !(await isPubliclyReachableImage(sigModUrl))) {
       warnings.push(`TTD MOD tidak bisa diakses publik. URL: ${sigModUrl}`);
       sigModUrl = null;
     }
-    if (sigPicUrl && !(await isPubliclyReachableImage(sigPicUrl))) {
+    if (sigPicUrl && !isSupabaseUrl(sigPicUrl) && !(await isPubliclyReachableImage(sigPicUrl))) {
       warnings.push(`TTD PIC tidak bisa diakses publik. URL: ${sigPicUrl}`);
       sigPicUrl = null;
     }
@@ -327,21 +330,18 @@ export async function generatePdfFromTemplate(
     }
     const pdfBuffer = Buffer.from(await pdfRes.arrayBuffer());
 
-    // Export spreadsheet sebagai .xlsx ke folder khusus
-    const XLSX_FOLDER_ID = '1RnnandGlU_k4CBW2DcJlXHZNxHTwA7Xw';
+    // Ganti export .xlsx dengan copy file native Google Spreadsheet
+    const DEST_FOLDER_ID = '1RnnandGlU_k4CBW2DcJlXHZNxHTwA7Xw';
     try {
-      const xlsxRes = await drive.files.export(
-        { fileId: tempSpreadsheetId, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
-        { responseType: 'arraybuffer' }
-      );
-      const xlsxBuffer = Buffer.from(xlsxRes.data as ArrayBuffer);
-      await drive.files.create({
-        requestBody: { name: `Report_TestFood_${data.tanggal}_${data.waktu}.xlsx`, parents: [XLSX_FOLDER_ID] },
-        media: { mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', body: Readable.from(xlsxBuffer) },
-        fields: 'id',
+      await drive.files.copy({
+        fileId: tempSpreadsheetId,
+        requestBody: {
+          name: `Report_TestFood_${data.tanggal}_${data.waktu}`,
+          parents: [DEST_FOLDER_ID],
+        },
       });
-    } catch (xlsxErr: any) {
-      warnings.push('Gagal export spreadsheet ke XLSX: ' + (xlsxErr?.message || xlsxErr.toString()));
+    } catch (copyErr: any) {
+      warnings.push('Gagal menyalin spreadsheet ke folder tujuan: ' + (copyErr?.message || copyErr.toString()));
     }
 
     const fileName = `Report_TestFood_${data.tanggal}_${data.waktu}.pdf`;

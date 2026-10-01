@@ -25,17 +25,27 @@ async function acquireLock(sheets: any): Promise<boolean> {
   try {
     const lockCheck = await sheets.spreadsheets.values.get({
       spreadsheetId: SOURCE_SHEET_ID,
-      range: 'Template_PDF!Z1',
+      range: 'Template_PDF!Z1:Z2',
     });
-    if (lockCheck.data.values?.[0]?.[0] === 'LOCKED') {
-      return false;
+    
+    const lockStatus = lockCheck.data.values?.[0]?.[0];
+    const lockTimestamp = lockCheck.data.values?.[1]?.[0];
+    
+    if (lockStatus === 'LOCKED') {
+      const now = Date.now();
+      const lockTime = parseInt(lockTimestamp || '0', 10);
+      const lockAge = now - lockTime;
+      
+      if (lockAge < 300000) {
+        return false;
+      }
     }
     
     await sheets.spreadsheets.values.update({
       spreadsheetId: SOURCE_SHEET_ID,
-      range: 'Template_PDF!Z1',
+      range: 'Template_PDF!Z1:Z2',
       valueInputOption: 'RAW',
-      requestBody: { values: [['LOCKED']] },
+      requestBody: { values: [['LOCKED'], [Date.now().toString()]] },
     });
     return true;
   } catch {
@@ -47,7 +57,7 @@ async function releaseLock(sheets: any): Promise<void> {
   try {
     await sheets.spreadsheets.values.clear({
       spreadsheetId: SOURCE_SHEET_ID,
-      range: 'Template_PDF!Z1',
+      range: 'Template_PDF!Z1:Z2',
     });
   } catch {
     // gagal release lock bukan fatal

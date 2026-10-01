@@ -509,6 +509,15 @@
     pad.clear();
     pad.fromDataURL(dataUrl);
     
+    const modal = bootstrap.Modal.getInstance(document.getElementById('signatureModal'));
+    modal.hide();
+    
+    const savedAlert = document.createElement('div');
+    savedAlert.className = 'alert alert-info alert-dismissible fade show position-fixed';
+    savedAlert.style.cssText = 'top: 20px; right: 20px; z-index: 9999; max-width: 300px;';
+    savedAlert.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Menyimpan signature...';
+    document.body.appendChild(savedAlert);
+    
     try {
       const tanggal = document.getElementById('tanggal').value || new Date().toISOString().split('T')[0];
       const waktu = document.getElementById('waktu').value || 'PAGI';
@@ -526,12 +535,18 @@
       
       if (res.success) {
         localStorage.setItem('modSignatureUrl', res.url);
+        savedAlert.className = 'alert alert-success alert-dismissible fade show position-fixed';
+        savedAlert.innerHTML = '✅ Signature MOD berhasil disimpan!<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+        setTimeout(() => savedAlert.remove(), 3000);
+      } else {
+        throw new Error(res.message || 'Upload failed');
       }
     } catch (err) {
       console.error('Gagal upload signature MOD:', err);
+      savedAlert.className = 'alert alert-danger alert-dismissible fade show position-fixed';
+      savedAlert.innerHTML = `❌ Gagal menyimpan signature: ${err.message}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
+      setTimeout(() => savedAlert.remove(), 5000);
     }
-    
-    bootstrap.Modal.getInstance(document.getElementById('signatureModal')).hide();
   }
   
   function clearSignature() {

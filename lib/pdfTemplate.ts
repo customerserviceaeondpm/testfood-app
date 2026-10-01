@@ -90,7 +90,7 @@ async function backupTemplateData(sheets: any, maxRow: number = 45): Promise<Map
   return backup;
 }
 
-async function restoreTemplateData(sheets: any, backup: Map<string, any[][]>, maxRow: number): Promise<void> {
+async function restoreTemplateData(sheets: any, backup: Map<string, any[][]>, maxRow: number, templateSheetId: number): Promise<void> {
   try {
     const clearRanges = [
       'Template_PDF!B2',
@@ -106,8 +106,25 @@ async function restoreTemplateData(sheets: any, backup: Map<string, any[][]>, ma
       spreadsheetId: SOURCE_SHEET_ID,
       requestBody: { ranges: clearRanges },
     });
+
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: SOURCE_SHEET_ID,
+      requestBody: {
+        requests: [{
+          unmergeCells: {
+            range: {
+              sheetId: templateSheetId,
+              startRowIndex: 32,
+              endRowIndex: maxRow - 1,
+              startColumnIndex: 0,
+              endColumnIndex: 1
+            }
+          }
+        }]
+      }
+    });
   } catch (err) {
-    console.error('Gagal clear template data:', err);
+    console.error('Gagal restore template data:', err);
   }
 }
 
@@ -125,6 +142,7 @@ export async function generatePdfFromTemplate(
   let lockAcquired = false;
   let backup: Map<string, any[][]> | null = null;
   let maxRow = 45;
+  let templateSheetId: number | null = null;
 
   try {
     const meta = await sheets.spreadsheets.get({ spreadsheetId: SOURCE_SHEET_ID });
@@ -132,7 +150,7 @@ export async function generatePdfFromTemplate(
     if (!templateSheet || templateSheet.properties?.sheetId == null) {
       throw new Error('Sheet "Template_PDF" tidak ditemukan di spreadsheet sumber.');
     }
-    const templateSheetId = templateSheet.properties.sheetId;
+    templateSheetId = templateSheet.properties.sheetId;
 
     lockAcquired = await acquireLock(sheets);
     if (!lockAcquired) {
@@ -218,9 +236,10 @@ export async function generatePdfFromTemplate(
 
       if (row > maxRow) maxRow = row;
 
+      const categoryLabel = (cat === 'OTHERS' && counts[cat] > 0) ? '' : cat;
       valueRanges.push({
         range: `Template_PDF!A${row}:E${row}`,
-        values: [[cat, counts[cat] + 1, item.nama, item.nilai, item.comment]],
+        values: [[categoryLabel, counts[cat] + 1, item.nama, item.nilai, item.comment]],
       });
       counts[cat]++;
     }
@@ -230,35 +249,52 @@ export async function generatePdfFromTemplate(
       requestBody: { valueInputOption: 'USER_ENTERED', data: valueRanges },
     });
 
-    if (counts['OTHERS'] > 9) {
-      const borderRequests = [];
-      const extraRows = counts['OTHERS'] - 9;
+    if (counts['OTHERS'] > 0) {
+      const requests = [];
       
-      for (let i = 0; i < extraRows; i++) {
-        const rowIndex = 41 + i;
+      const othersEndRow = 33 + counts['OTHERS'];
+      requests.push({
+        mergeCells: {
+          range: {
+            sheetId: templateSheetId,
+            startRowIndex: 32,
+            endRowIndex: othersEndRow - 1,
+            startColumnIndex: 0,
+            endColumnIndex: 1
+          },
+          mergeType: 'MERGE_ALL'
+        }
+      });
+      
+      if (counts['OTHERS'] > 9) {
+        const extraRows = counts['OTHERS'] - 9;
         
-        borderRequests.push({
-          updateBorders: {
-            range: {
-              sheetId: templateSheetId,
-              startRowIndex: rowIndex,
-              endRowIndex: rowIndex + 1,
-              startColumnIndex: 0,
-              endColumnIndex: 5
-            },
-            top: { style: 'SOLID', width: 1, color: { red: 0, green: 0, blue: 0 } },
-            bottom: { style: 'SOLID', width: 1, color: { red: 0, green: 0, blue: 0 } },
-            left: { style: 'SOLID', width: 1, color: { red: 0, green: 0, blue: 0 } },
-            right: { style: 'SOLID', width: 1, color: { red: 0, green: 0, blue: 0 } },
-            innerHorizontal: { style: 'SOLID', width: 1, color: { red: 0, green: 0, blue: 0 } },
-            innerVertical: { style: 'SOLID', width: 1, color: { red: 0, green: 0, blue: 0 } }
-          }
-        });
+        for (let i = 0; i < extraRows; i++) {
+          const rowIndex = 41 + i;
+          
+          requests.push({
+            updateBorders: {
+              range: {
+                sheetId: templateSheetId,
+                startRowIndex: rowIndex,
+                endRowIndex: rowIndex + 1,
+                startColumnIndex: 0,
+                endColumnIndex: 5
+              },
+              top: { style: 'SOLID', width: 1, color: { red: 0, green: 0, blue: 0 } },
+              bottom: { style: 'SOLID', width: 1, color: { red: 0, green: 0, blue: 0 } },
+              left: { style: 'SOLID', width: 1, color: { red: 0, green: 0, blue: 0 } },
+              right: { style: 'SOLID', width: 1, color: { red: 0, green: 0, blue: 0 } },
+              innerHorizontal: { style: 'SOLID', width: 1, color: { red: 0, green: 0, blue: 0 } },
+              innerVertical: { style: 'SOLID', width: 1, color: { red: 0, green: 0, blue: 0 } }
+            }
+          });
+        }
       }
       
       await sheets.spreadsheets.batchUpdate({
         spreadsheetId: SOURCE_SHEET_ID,
-        requestBody: { requests: borderRequests }
+        requestBody: { requests }
       });
     }
 
@@ -273,7 +309,9 @@ export async function generatePdfFromTemplate(
 
     const exportUrl =
       `https://docs.google.com/spreadsheets/d/${SOURCE_SHEET_ID}/export` +
-      `?format=pdf&size=A4&portrait=false&fitw=true&gridlines=false&gid=${templateSheetId}`;
+      `?format=pdf&size=A4&portrait=false&scale=4&fitw=true&fith=true` +
+      `&gridlines=false&printtitle=false&sheetnames=false&pagenum=UNDEFINED` +
+      `&attachment=false&gid=${templateSheetId}`;
 
     const pdfRes = await fetch(exportUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
     if (!pdfRes.ok) {
@@ -327,8 +365,8 @@ export async function generatePdfFromTemplate(
     }
     throw err;
   } finally {
-    if (backup) {
-      await restoreTemplateData(sheets, backup, maxRow);
+    if (backup && templateSheetId !== null) {
+      await restoreTemplateData(sheets, backup, maxRow, templateSheetId);
     }
   }
 }

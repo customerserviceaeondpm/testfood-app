@@ -120,6 +120,22 @@ async function restoreTemplateData(sheets: any, backup: Map<string, any[][]>, ma
               endColumnIndex: 1
             }
           }
+        }, {
+          updateBorders: {
+            range: {
+              sheetId: templateSheetId,
+              startRowIndex: 41,
+              endRowIndex: 60,
+              startColumnIndex: 0,
+              endColumnIndex: 5
+            },
+            top: { style: 'NONE' },
+            bottom: { style: 'NONE' },
+            left: { style: 'NONE' },
+            right: { style: 'NONE' },
+            innerHorizontal: { style: 'NONE' },
+            innerVertical: { style: 'NONE' }
+          }
         }]
       }
     });

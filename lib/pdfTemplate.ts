@@ -164,21 +164,7 @@ export async function generatePdfFromTemplate(
       },
     });
 
-    let sigModUrl: string | null = null;
-    if (data.sigMOD && typeof data.sigMOD === 'string' && data.sigMOD.startsWith('data:image')) {
-      const base64 = data.sigMOD.split(',')[1];
-      const buffer = Buffer.from(base64, 'base64');
-      const fileName = `mod_${data.tanggal}_${data.waktu}_${Date.now()}.png`;
-      const { error } = await supabase.storage
-        .from('signatures')
-        .upload(fileName, buffer, { contentType: 'image/png', upsert: true });
-      if (!error) {
-        const { data: pub } = supabase.storage.from('signatures').getPublicUrl(fileName);
-        sigModUrl = pub.publicUrl;
-      } else {
-        warnings.push(`Gagal upload TTD MOD ke Storage: ${error.message}`);
-      }
-    }
+    let sigModUrl: string | null = data.sigModUrl || null;
 
     let sigPicUrl = sigPicUrlInput;
 
@@ -227,6 +213,7 @@ export async function generatePdfFromTemplate(
     });
 
     await new Promise(resolve => setTimeout(resolve, 3000));
+    await releaseLock(sheets);
 
     const accessTokenRes = await auth.getAccessToken();
     const accessToken = typeof accessTokenRes === 'string' ? accessTokenRes : accessTokenRes?.token;
@@ -282,12 +269,14 @@ export async function generatePdfFromTemplate(
 
     const url = driveRes.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
     return { url, warnings };
+  } catch (err: any) {
+    if (lockAcquired) {
+      await releaseLock(sheets);
+    }
+    throw err;
   } finally {
     if (backup) {
       await restoreTemplateData(sheets, backup);
-    }
-    if (lockAcquired) {
-      await releaseLock(sheets);
     }
   }
 }

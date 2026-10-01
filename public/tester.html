@@ -415,6 +415,8 @@
     btnElement.innerHTML = "⌛ Proses...";
 
     try {
+      const modSignatureUrl = localStorage.getItem('modSignatureUrl') || null;
+      
       const res = await fetch('/api/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -425,13 +427,14 @@
           mod: document.getElementById('mod').value,
           testers: [document.getElementById('tester1').value, document.getElementById('tester2').value, document.getElementById('tester3').value, document.getElementById('tester4').value],
           items: items,
-          sigMOD: pad.toDataURL()
+          sigModUrl: modSignatureUrl
         })
       }).then(r => r.json());
 
       if(res.success) {
         alert("✅ Berhasil!" + (res.message ? " " + res.message : ""));
         localStorage.removeItem('testFoodDraft');
+        localStorage.removeItem('modSignatureUrl');
         if (res.url) window.open(res.url, '_blank');
         location.reload();
       } else {
@@ -492,7 +495,7 @@
     if (modalSignaturePad) modalSignaturePad.clear();
   }
   
-  function saveModalSignature() {
+  async function saveModalSignature() {
     if (!modalSignaturePad || modalSignaturePad.isEmpty()) {
       alert('Tanda tangan masih kosong!');
       return;
@@ -500,14 +503,33 @@
     
     const dataUrl = modalSignaturePad.toDataURL();
     
-    // Tampilkan canvas padMOD dulu sebelum load gambar
     document.getElementById('padMOD').style.display = 'block';
     document.getElementById('sigPlaceholder').style.display = 'none';
     
-    // Hapus isi canvas sebelum load dataURL baru
     pad.clear();
-    // Load gambar dan pastikan canvas sudah di-resize
     pad.fromDataURL(dataUrl);
+    
+    try {
+      const tanggal = document.getElementById('tanggal').value || new Date().toISOString().split('T')[0];
+      const waktu = document.getElementById('waktu').value || 'PAGI';
+      
+      const res = await fetch('/api/signature/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sigData: dataUrl,
+          type: 'MOD',
+          tanggal,
+          waktu
+        })
+      }).then(r => r.json());
+      
+      if (res.success) {
+        localStorage.setItem('modSignatureUrl', res.url);
+      }
+    } catch (err) {
+      console.error('Gagal upload signature MOD:', err);
+    }
     
     bootstrap.Modal.getInstance(document.getElementById('signatureModal')).hide();
   }

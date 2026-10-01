@@ -72,7 +72,7 @@ async function backupTemplateData(sheets: any): Promise<Map<string, any[][]>> {
     'Template_PDF!E3',
     'Template_PDF!H2:I3',
     'Template_PDF!H29:I35',
-    'Template_PDF!H35:I35',
+    'Template_PDF!H36:I36',
     'Template_PDF!A6:E45',
   ];
 
@@ -178,17 +178,17 @@ export async function generatePdfFromTemplate(
 
     let sigPicUrl = sigPicUrlInput;
 
-    const valueRanges: { range: string; values: any[][] }[] = [
-      { range: 'Template_PDF!B2', values: [[data.tanggal]] },
-      { range: 'Template_PDF!E3', values: [[data.waktu === 'PAGI' ? '09:00 - 10:00' : '16:00 - 17:00']] },
-      { range: 'Template_PDF!B4', values: [[`Pak ${data.mod || ''}`]] },
-      { range: 'Template_PDF!H2', values: [[`1. ${data.testers?.[0] || ''}`]] },
-      { range: 'Template_PDF!I2', values: [[`2. ${data.testers?.[1] || ''}`]] },
-      { range: 'Template_PDF!H3', values: [[`3. ${data.testers?.[2] || ''}`]] },
-      { range: 'Template_PDF!I3', values: [[`4. ${data.testers?.[3] || ''}`]] },
-      { range: 'Template_PDF!H35', values: [[(data.mod || 'MOD').toUpperCase()]] },
-      { range: 'Template_PDF!I35', values: [[(namaPic || 'PIC').toUpperCase()]] },
-    ];
+  const valueRanges: { range: string; values: any[][] }[] = [
+    { range: 'Template_PDF!B2', values: [[data.tanggal]] },
+    { range: 'Template_PDF!E3', values: [[data.waktu === 'PAGI' ? '09:00 - 10:00' : '16:00 - 17:00']] },
+    { range: 'Template_PDF!B4', values: [[`Pak ${data.mod || ''}`]] },
+    { range: 'Template_PDF!H2', values: [[`1. ${data.testers?.[0] || ''}`]] },
+    { range: 'Template_PDF!I2', values: [[`2. ${data.testers?.[1] || ''}`]] },
+    { range: 'Template_PDF!H3', values: [[`3. ${data.testers?.[2] || ''}`]] },
+    { range: 'Template_PDF!I3', values: [[`4. ${data.testers?.[3] || ''}`]] },
+    { range: 'Template_PDF!H36', values: [[data.mod || 'MOD']] },
+    { range: 'Template_PDF!I36', values: [[namaPic || 'PIC']] },
+  ];
 
     if (sigModUrl) {
       valueRanges.push({ range: 'Template_PDF!H29', values: [[`=IMAGE("${sigModUrl}")`]] });

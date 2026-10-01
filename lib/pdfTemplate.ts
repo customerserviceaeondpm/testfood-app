@@ -64,7 +64,7 @@ async function releaseLock(sheets: any): Promise<void> {
   }
 }
 
-async function backupTemplateData(sheets: any): Promise<Map<string, any[][]>> {
+async function backupTemplateData(sheets: any, maxRow: number = 45): Promise<Map<string, any[][]>> {
   const backup = new Map<string, any[][]>();
   const rangesToBackup = [
     'Template_PDF!B2',
@@ -73,7 +73,7 @@ async function backupTemplateData(sheets: any): Promise<Map<string, any[][]>> {
     'Template_PDF!H2:I3',
     'Template_PDF!H29:I35',
     'Template_PDF!H36:I36',
-    'Template_PDF!A6:E45',
+    `Template_PDF!B6:E${maxRow}`,
   ];
 
   for (const range of rangesToBackup) {
@@ -90,9 +90,18 @@ async function backupTemplateData(sheets: any): Promise<Map<string, any[][]>> {
   return backup;
 }
 
-async function restoreTemplateData(sheets: any, backup: Map<string, any[][]>): Promise<void> {
-  const clearRanges = Array.from(backup.keys());
+async function restoreTemplateData(sheets: any, backup: Map<string, any[][]>, maxRow: number): Promise<void> {
   try {
+    const clearRanges = [
+      'Template_PDF!B2',
+      'Template_PDF!B4',
+      'Template_PDF!E3',
+      'Template_PDF!H2:I3',
+      'Template_PDF!H29:I35',
+      'Template_PDF!H36:I36',
+      `Template_PDF!B6:E${maxRow}`,
+    ];
+    
     await sheets.spreadsheets.values.batchClear({
       spreadsheetId: SOURCE_SHEET_ID,
       requestBody: { ranges: clearRanges },
@@ -115,6 +124,7 @@ export async function generatePdfFromTemplate(
 
   let lockAcquired = false;
   let backup: Map<string, any[][]> | null = null;
+  let maxRow = 45;
 
   try {
     const meta = await sheets.spreadsheets.get({ spreadsheetId: SOURCE_SHEET_ID });
@@ -128,8 +138,6 @@ export async function generatePdfFromTemplate(
     if (!lockAcquired) {
       throw new Error('Export sedang berjalan. Coba lagi dalam 30 detik.');
     }
-
-    backup = await backupTemplateData(sheets);
 
     const headerText = 'PAGI / SORE';
     const strikeStart = data.waktu === 'PAGI' ? 7 : 0;
@@ -208,19 +216,53 @@ export async function generatePdfFromTemplate(
       const baseRow = COUNTER_MAP[cat];
       const row = cat === 'OTHERS' ? baseRow + counts[cat] : baseRow + (counts[cat] % 3);
 
-      if (row >= 6 && row <= 45) {
-        valueRanges.push({
-          range: `Template_PDF!A${row}:E${row}`,
-          values: [[cat, counts[cat] + 1, item.nama, item.nilai, item.comment]],
-        });
-        counts[cat]++;
-      }
+      if (row > maxRow) maxRow = row;
+
+      valueRanges.push({
+        range: `Template_PDF!A${row}:E${row}`,
+        values: [[cat, counts[cat] + 1, item.nama, item.nilai, item.comment]],
+      });
+      counts[cat]++;
     }
 
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: SOURCE_SHEET_ID,
       requestBody: { valueInputOption: 'USER_ENTERED', data: valueRanges },
     });
+
+    if (counts['OTHERS'] > 9) {
+      const borderRequests = [];
+      const extraRows = counts['OTHERS'] - 9;
+      
+      for (let i = 0; i < extraRows; i++) {
+        const rowIndex = 41 + i;
+        
+        borderRequests.push({
+          updateBorders: {
+            range: {
+              sheetId: templateSheetId,
+              startRowIndex: rowIndex,
+              endRowIndex: rowIndex + 1,
+              startColumnIndex: 0,
+              endColumnIndex: 5
+            },
+            top: { style: 'SOLID', width: 1, color: { red: 0, green: 0, blue: 0 } },
+            bottom: { style: 'SOLID', width: 1, color: { red: 0, green: 0, blue: 0 } },
+            left: { style: 'SOLID', width: 1, color: { red: 0, green: 0, blue: 0 } },
+            right: { style: 'SOLID', width: 1, color: { red: 0, green: 0, blue: 0 } },
+            innerHorizontal: { style: 'SOLID', width: 1, color: { red: 0, green: 0, blue: 0 } },
+            innerVertical: { style: 'SOLID', width: 1, color: { red: 0, green: 0, blue: 0 } }
+          }
+        });
+      }
+      
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: SOURCE_SHEET_ID,
+        requestBody: { requests: borderRequests }
+      });
+    }
+
+    backup = await backupTemplateData(sheets, maxRow);
 
     await new Promise(resolve => setTimeout(resolve, 3000));
     await releaseLock(sheets);
@@ -286,7 +328,7 @@ export async function generatePdfFromTemplate(
     throw err;
   } finally {
     if (backup) {
-      await restoreTemplateData(sheets, backup);
+      await restoreTemplateData(sheets, backup, maxRow);
     }
   }
 }

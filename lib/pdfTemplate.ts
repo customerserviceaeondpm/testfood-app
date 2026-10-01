@@ -1,5 +1,4 @@
 import { Readable } from 'stream';
-import { PDFDocument } from 'pdf-lib';
 import { getGoogleAuth } from './googleAuth';
 import { getSheetsClient } from './googleSheets';
 import { getDriveClient } from './googleDrive';
@@ -20,134 +19,7 @@ const COUNTER_MAP: Record<string, number> = {
   OTHERS: 33,
 };
 
-// Sel anchor tempat tanda tangan seharusnya berada di template (0-indexed): H29 dan I29
-const SIG_MOD_ANCHOR = { row: 28, col: 7 };
-const SIG_PIC_ANCHOR = { row: 28, col: 8 };
 
-// Padding kecil di dalam kotak (px skala sheet), meniru "Offset 2px" di kode Apps Script lama
-const BOX_PADDING_PX = 2;
-
-// Margin halaman export PDF Google Sheets (pt). Export pakai margin default,
-// grid tidak mulai di 0,0 halaman. Tanpa ini X/Y selalu geser.
-const MARGIN_LEFT_PT = 36;
-const MARGIN_RIGHT_PT = 36;
-const MARGIN_TOP_PT = 36;
-const MARGIN_BOTTOM_PT = 36;
-
-// Kolom terakhir yang ikut tercetak di PDF (A..I = 9 kolom, index 0-8).
-// Dipakai untuk menghitung skala px->pt hasil export. Sesuaikan kalau layout template berubah.
-const LAST_PRINTED_COLUMN_INDEX = 8;
-
-async function isPubliclyReachableImage(url: string): Promise<boolean> {
-  try {
-    const res = await fetch(url, { method: 'GET' });
-    if (!res.ok) return false;
-    const contentType = res.headers.get('content-type') || '';
-    return contentType.startsWith('image/');
-  } catch {
-    return false;
-  }
-}
-
-async function getGridMetadata(sheets: any, spreadsheetId: string) {
-  const res = await sheets.spreadsheets.get({
-    spreadsheetId,
-    ranges: ['Report'],
-    fields: 'sheets.merges,sheets.data.rowMetadata,sheets.data.columnMetadata',
-  });
-  const sheetData = res.data.sheets?.[0];
-  const gridData = sheetData?.data?.[0];
-  return {
-    merges: sheetData?.merges || [],
-    columnMetadata: gridData?.columnMetadata || [],
-    rowMetadata: gridData?.rowMetadata || [],
-  };
-}
-
-// Jumlah pixel kumulatif dari kolom/baris ke-0 sampai sebelum index tertentu.
-function cumulativePixels(metadataList: any[], count: number, defaultPx: number): number {
-  let total = 0;
-  for (let i = 0; i < count; i++) {
-    total += metadataList[i]?.pixelSize ?? defaultPx;
-  }
-  return total;
-}
-
-// Cari merged cell yang menaungi sel anchor tertentu. Kalau sel itu ternyata
-// tidak digabung (bukan merge), anggap batasnya cuma sel itu sendiri (1x1).
-function findBoxRange(merges: any[], anchor: { row: number; col: number }) {
-  const merge = merges.find(
-    (m: any) =>
-      anchor.row >= m.startRowIndex && anchor.row < m.endRowIndex &&
-      anchor.col >= m.startColumnIndex && anchor.col < m.endColumnIndex
-  );
-  if (merge) return merge;
-  return {
-    startRowIndex: anchor.row,
-    endRowIndex: anchor.row + 1,
-    startColumnIndex: anchor.col,
-    endColumnIndex: anchor.col + 1,
-  };
-}
-
-/**
- * Tempelkan gambar tanda tangan langsung ke PDF hasil export, pas di dalam batas
- * kotak tanda tangan ASLI di template (dibaca dari info merged cell-nya langsung,
- * bukan tebakan offset manual) - dikonversi ke satuan poin PDF pakai skala hasil export.
- *
- * Kenapa begini, bukan formula IMAGE() di sheet: Google Sheets API v4 tidak selalu
- * benar-benar merender formula IMAGE() saat diakses murni lewat API (berbeda dari saat
- * dibuka manual di browser), dan API ini juga tidak menyediakan cara menyisipkan gambar
- * mengambang (floating image) seperti SpreadsheetApp.insertImage() di Apps Script -
- * itu fitur khusus Apps Script yang tidak diekspos di REST API. Jadi gambar ditempel
- * langsung ke file PDF akhir, bukan dititipkan ke proses render Google.
- */
-async function overlaySignatures(
-  pdfBuffer: Buffer,
-  sheets: any,
-  tempSpreadsheetId: string,
-  sigModUrl: string | null,
-  sigPicUrl: string | null
-): Promise<any> {
-  const { merges, columnMetadata, rowMetadata } = await getGridMetadata(sheets, tempSpreadsheetId);
-
-  const totalGridWidthPx = cumulativePixels(columnMetadata, LAST_PRINTED_COLUMN_INDEX + 1, 100);
-
-  const pdfDoc = await PDFDocument.load(pdfBuffer);
-  const page = pdfDoc.getPages()[0];
-  const pageWidthPt = page.getWidth();
-  const pageHeightPt = page.getHeight();
-  const scale = pageWidthPt / totalGridWidthPx;
-
-  async function draw(url: string, anchor: { row: number; col: number }) {
-    const box = findBoxRange(merges, anchor);
-
-    const leftPx = cumulativePixels(columnMetadata, box.startColumnIndex, 100) + BOX_PADDING_PX;
-    const rightPx = cumulativePixels(columnMetadata, box.endColumnIndex, 100) - BOX_PADDING_PX;
-    const topPx = cumulativePixels(rowMetadata, box.startRowIndex, 21) + BOX_PADDING_PX;
-    const bottomPx = cumulativePixels(rowMetadata, box.endRowIndex, 21) - BOX_PADDING_PX;
-
-    const boxWidthPt = Math.max(rightPx - leftPx, 1) * scale;
-    const boxHeightPt = Math.max(bottomPx - topPx, 1) * scale;
-
-    // Google Sheets export PDF memasukkan margin default 36pt di semua sisi.
-    // Koordinat x, y perlu ditambah margin agar sesuai posisi sel di template.
-    const xPt = leftPx * scale + MARGIN_LEFT_PT;
-    const yPt = pageHeightPt - bottomPx * scale - MARGIN_TOP_PT; // PDF origin di kiri-bawah, sheet origin di kiri-atas
-
-    const imgRes = await fetch(url);
-    const imgBytes = new Uint8Array(await imgRes.arrayBuffer());
-    const pngImage = await pdfDoc.embedPng(imgBytes);
-
-    page.drawImage(pngImage, { x: xPt, y: yPt, width: boxWidthPt, height: boxHeightPt });
-  }
-
-  if (sigModUrl) await draw(sigModUrl, SIG_MOD_ANCHOR);
-  if (sigPicUrl) await draw(sigPicUrl, SIG_PIC_ANCHOR);
-
-  const savedBytes = await pdfDoc.save();
-  return Buffer.from(savedBytes) as any;
-}
 
 export async function generatePdfFromTemplate(
   data: any,
@@ -258,20 +130,7 @@ export async function generatePdfFromTemplate(
     }
 
     let sigPicUrl = sigPicUrlInput;
-    // Skip validasi untuk URL Supabase Storage
-    const isSupabaseUrl = (url: string) => url.includes('.supabase.co/storage/');
-    
-    if (sigModUrl && !isSupabaseUrl(sigModUrl) && !(await isPubliclyReachableImage(sigModUrl))) {
-      warnings.push(`TTD MOD tidak bisa diakses publik. URL: ${sigModUrl}`);
-      sigModUrl = null;
-    }
-    if (sigPicUrl && !isSupabaseUrl(sigPicUrl) && !(await isPubliclyReachableImage(sigPicUrl))) {
-      warnings.push(`TTD PIC tidak bisa diakses publik. URL: ${sigPicUrl}`);
-      sigPicUrl = null;
-    }
 
-    // Isi data teks (tanggal, MOD, tester, daftar produk per counter).
-    // Tanda tangan TIDAK ditulis sebagai formula IMAGE() di sini - akan di-overlay via PDF-lib.
     const valueRanges: { range: string; values: any[][] }[] = [
       { range: 'Report!B2', values: [[data.tanggal]] },
       { range: 'Report!E3', values: [[data.waktu === 'PAGI' ? '09:00 - 10:00' : '16:00 - 17:00']] },
@@ -283,6 +142,13 @@ export async function generatePdfFromTemplate(
       { range: 'Report!H35', values: [[(data.mod || 'MOD').toUpperCase()]] },
       { range: 'Report!I35', values: [[(namaPic || 'PIC').toUpperCase()]] },
     ];
+
+    if (sigModUrl) {
+      valueRanges.push({ range: 'Report!H29', values: [[`=IMAGE("${sigModUrl}")`]] });
+    }
+    if (sigPicUrl) {
+      valueRanges.push({ range: 'Report!I29', values: [[`=IMAGE("${sigPicUrl}")`]] });
+    }
 
     const counts: Record<string, number> = {};
     Object.keys(COUNTER_MAP).forEach((k) => (counts[k] = 0));
@@ -309,6 +175,8 @@ export async function generatePdfFromTemplate(
       requestBody: { valueInputOption: 'USER_ENTERED', data: valueRanges },
     });
 
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
     const accessTokenRes = await auth.getAccessToken();
     const accessToken = typeof accessTokenRes === 'string' ? accessTokenRes : accessTokenRes?.token;
     if (!accessToken) throw new Error('Gagal mendapatkan access token Google.');
@@ -321,16 +189,7 @@ export async function generatePdfFromTemplate(
     if (!pdfRes.ok) {
       throw new Error(`Gagal export PDF dari Google Sheets (status ${pdfRes.status})`);
     }
-    let pdfBuffer = Buffer.from(await pdfRes.arrayBuffer());
-
-    // Tempel tanda tangan langsung ke PDF hasil export
-    if (sigModUrl || sigPicUrl) {
-      try {
-        pdfBuffer = await overlaySignatures(pdfBuffer, sheets, tempSpreadsheetId, sigModUrl, sigPicUrl);
-      } catch (overlayErr: any) {
-        warnings.push('Gagal menempelkan tanda tangan ke PDF: ' + (overlayErr?.message || overlayErr.toString()));
-      }
-    }
+    const pdfBuffer = Buffer.from(await pdfRes.arrayBuffer());
 
     // Ganti export .xlsx dengan copy file native Google Spreadsheet
     const DEST_FOLDER_ID = '1RnnandGlU_k4CBW2DcJlXHZNxHTwA7Xw';

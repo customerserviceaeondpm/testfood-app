@@ -73,7 +73,7 @@ async function backupTemplateData(sheets: any, maxRow: number = 45): Promise<Map
     'Template_PDF!H2:I3',
     'Template_PDF!H29:I35',
     'Template_PDF!H36:I36',
-    `Template_PDF!B6:E${maxRow}`,
+    'Template_PDF!B6:E60',
   ];
 
   for (const range of rangesToBackup) {
@@ -99,7 +99,7 @@ async function restoreTemplateData(sheets: any, backup: Map<string, any[][]>, ma
       'Template_PDF!H2:I3',
       'Template_PDF!H29:I35',
       'Template_PDF!H36:I36',
-      `Template_PDF!B6:E${maxRow}`,
+      'Template_PDF!B6:E60',
     ];
     
     await sheets.spreadsheets.values.batchClear({
@@ -115,7 +115,7 @@ async function restoreTemplateData(sheets: any, backup: Map<string, any[][]>, ma
             range: {
               sheetId: templateSheetId,
               startRowIndex: 32,
-              endRowIndex: maxRow - 1,
+              endRowIndex: 60,
               startColumnIndex: 0,
               endColumnIndex: 1
             }
@@ -156,6 +156,8 @@ export async function generatePdfFromTemplate(
     if (!lockAcquired) {
       throw new Error('Export sedang berjalan. Coba lagi dalam 30 detik.');
     }
+
+    backup = await backupTemplateData(sheets, 60);
 
     const headerText = 'PAGI / SORE';
     const strikeStart = data.waktu === 'PAGI' ? 7 : 0;
@@ -297,8 +299,6 @@ export async function generatePdfFromTemplate(
         requestBody: { requests }
       });
     }
-
-    backup = await backupTemplateData(sheets, maxRow);
 
     await new Promise(resolve => setTimeout(resolve, 3000));
     await releaseLock(sheets);

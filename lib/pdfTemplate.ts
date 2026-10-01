@@ -21,6 +21,77 @@ const COUNTER_MAP: Record<string, number> = {
 
 
 
+async function acquireLock(sheets: any): Promise<boolean> {
+  try {
+    const lockCheck = await sheets.spreadsheets.values.get({
+      spreadsheetId: SOURCE_SHEET_ID,
+      range: 'Template_PDF!Z1',
+    });
+    if (lockCheck.data.values?.[0]?.[0] === 'LOCKED') {
+      return false;
+    }
+    
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SOURCE_SHEET_ID,
+      range: 'Template_PDF!Z1',
+      valueInputOption: 'RAW',
+      requestBody: { values: [['LOCKED']] },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function releaseLock(sheets: any): Promise<void> {
+  try {
+    await sheets.spreadsheets.values.clear({
+      spreadsheetId: SOURCE_SHEET_ID,
+      range: 'Template_PDF!Z1',
+    });
+  } catch {
+    // gagal release lock bukan fatal
+  }
+}
+
+async function backupTemplateData(sheets: any): Promise<Map<string, any[][]>> {
+  const backup = new Map<string, any[][]>();
+  const rangesToBackup = [
+    'Template_PDF!B2',
+    'Template_PDF!B4',
+    'Template_PDF!E3',
+    'Template_PDF!H2:I3',
+    'Template_PDF!H29:I35',
+    'Template_PDF!H35:I35',
+    'Template_PDF!A6:E45',
+  ];
+
+  for (const range of rangesToBackup) {
+    try {
+      const res = await sheets.spreadsheets.values.get({
+        spreadsheetId: SOURCE_SHEET_ID,
+        range,
+      });
+      backup.set(range, res.data.values || []);
+    } catch {
+      backup.set(range, []);
+    }
+  }
+  return backup;
+}
+
+async function restoreTemplateData(sheets: any, backup: Map<string, any[][]>): Promise<void> {
+  const clearRanges = Array.from(backup.keys());
+  try {
+    await sheets.spreadsheets.values.batchClear({
+      spreadsheetId: SOURCE_SHEET_ID,
+      requestBody: { ranges: clearRanges },
+    });
+  } catch (err) {
+    console.error('Gagal clear template data:', err);
+  }
+}
+
 export async function generatePdfFromTemplate(
   data: any,
   namaPic: string,
@@ -32,7 +103,8 @@ export async function generatePdfFromTemplate(
   const drive = getDriveClient();
   const warnings: string[] = [];
 
-  let tempSpreadsheetId: string | null = null;
+  let lockAcquired = false;
+  let backup: Map<string, any[][]> | null = null;
 
   try {
     const meta = await sheets.spreadsheets.get({ spreadsheetId: SOURCE_SHEET_ID });
@@ -42,25 +114,12 @@ export async function generatePdfFromTemplate(
     }
     const templateSheetId = templateSheet.properties.sheetId;
 
-    const createRes = await drive.files.create({
-      requestBody: {
-        name: `Temp_${data.tanggal}_${data.waktu}`,
-        mimeType: 'application/vnd.google-apps.spreadsheet',
-        parents: [DRIVE_FOLDER_ID],
-      },
-      fields: 'id',
-    });
-    tempSpreadsheetId = createRes.data.id!;
+    lockAcquired = await acquireLock(sheets);
+    if (!lockAcquired) {
+      throw new Error('Export sedang berjalan. Coba lagi dalam 30 detik.');
+    }
 
-    const tempMeta = await sheets.spreadsheets.get({ spreadsheetId: tempSpreadsheetId });
-    const defaultSheetId = tempMeta.data.sheets![0].properties!.sheetId!;
-
-    const copyRes = await sheets.spreadsheets.sheets.copyTo({
-      spreadsheetId: SOURCE_SHEET_ID,
-      sheetId: templateSheetId,
-      requestBody: { destinationSpreadsheetId: tempSpreadsheetId },
-    });
-    const newSheetId = copyRes.data.sheetId!;
+    backup = await backupTemplateData(sheets);
 
     const headerText = 'PAGI / SORE';
     const strikeStart = data.waktu === 'PAGI' ? 7 : 0;
@@ -76,20 +135,13 @@ export async function generatePdfFromTemplate(
     }
 
     await sheets.spreadsheets.batchUpdate({
-      spreadsheetId: tempSpreadsheetId,
+      spreadsheetId: SOURCE_SHEET_ID,
       requestBody: {
         requests: [
-          { deleteSheet: { sheetId: defaultSheetId } },
-          {
-            updateSheetProperties: {
-              properties: { sheetId: newSheetId, title: 'Report' },
-              fields: 'title',
-            },
-          },
           {
             updateCells: {
               range: {
-                sheetId: newSheetId,
+                sheetId: templateSheetId,
                 startRowIndex: 2,
                 endRowIndex: 3,
                 startColumnIndex: 1,
@@ -112,7 +164,6 @@ export async function generatePdfFromTemplate(
       },
     });
 
-    // Upload tanda tangan MOD ke Supabase Storage
     let sigModUrl: string | null = null;
     if (data.sigMOD && typeof data.sigMOD === 'string' && data.sigMOD.startsWith('data:image')) {
       const base64 = data.sigMOD.split(',')[1];
@@ -132,22 +183,22 @@ export async function generatePdfFromTemplate(
     let sigPicUrl = sigPicUrlInput;
 
     const valueRanges: { range: string; values: any[][] }[] = [
-      { range: 'Report!B2', values: [[data.tanggal]] },
-      { range: 'Report!E3', values: [[data.waktu === 'PAGI' ? '09:00 - 10:00' : '16:00 - 17:00']] },
-      { range: 'Report!B4', values: [[`Pak ${data.mod || ''}`]] },
-      { range: 'Report!H2', values: [[`1. ${data.testers?.[0] || ''}`]] },
-      { range: 'Report!I2', values: [[`2. ${data.testers?.[1] || ''}`]] },
-      { range: 'Report!H3', values: [[`3. ${data.testers?.[2] || ''}`]] },
-      { range: 'Report!I3', values: [[`4. ${data.testers?.[3] || ''}`]] },
-      { range: 'Report!H35', values: [[(data.mod || 'MOD').toUpperCase()]] },
-      { range: 'Report!I35', values: [[(namaPic || 'PIC').toUpperCase()]] },
+      { range: 'Template_PDF!B2', values: [[data.tanggal]] },
+      { range: 'Template_PDF!E3', values: [[data.waktu === 'PAGI' ? '09:00 - 10:00' : '16:00 - 17:00']] },
+      { range: 'Template_PDF!B4', values: [[`Pak ${data.mod || ''}`]] },
+      { range: 'Template_PDF!H2', values: [[`1. ${data.testers?.[0] || ''}`]] },
+      { range: 'Template_PDF!I2', values: [[`2. ${data.testers?.[1] || ''}`]] },
+      { range: 'Template_PDF!H3', values: [[`3. ${data.testers?.[2] || ''}`]] },
+      { range: 'Template_PDF!I3', values: [[`4. ${data.testers?.[3] || ''}`]] },
+      { range: 'Template_PDF!H35', values: [[(data.mod || 'MOD').toUpperCase()]] },
+      { range: 'Template_PDF!I35', values: [[(namaPic || 'PIC').toUpperCase()]] },
     ];
 
     if (sigModUrl) {
-      valueRanges.push({ range: 'Report!H29', values: [[`=IMAGE("${sigModUrl}")`]] });
+      valueRanges.push({ range: 'Template_PDF!H29', values: [[`=IMAGE("${sigModUrl}")`]] });
     }
     if (sigPicUrl) {
-      valueRanges.push({ range: 'Report!I29', values: [[`=IMAGE("${sigPicUrl}")`]] });
+      valueRanges.push({ range: 'Template_PDF!I29', values: [[`=IMAGE("${sigPicUrl}")`]] });
     }
 
     const counts: Record<string, number> = {};
@@ -163,7 +214,7 @@ export async function generatePdfFromTemplate(
 
       if (row >= 6 && row <= 45) {
         valueRanges.push({
-          range: `Report!A${row}:E${row}`,
+          range: `Template_PDF!A${row}:E${row}`,
           values: [[cat, counts[cat] + 1, item.nama, item.nilai, item.comment]],
         });
         counts[cat]++;
@@ -171,7 +222,7 @@ export async function generatePdfFromTemplate(
     }
 
     await sheets.spreadsheets.values.batchUpdate({
-      spreadsheetId: tempSpreadsheetId,
+      spreadsheetId: SOURCE_SHEET_ID,
       requestBody: { valueInputOption: 'USER_ENTERED', data: valueRanges },
     });
 
@@ -182,8 +233,8 @@ export async function generatePdfFromTemplate(
     if (!accessToken) throw new Error('Gagal mendapatkan access token Google.');
 
     const exportUrl =
-      `https://docs.google.com/spreadsheets/d/${tempSpreadsheetId}/export` +
-      `?format=pdf&size=A4&portrait=false&fitw=true&gridlines=false&gid=${newSheetId}`;
+      `https://docs.google.com/spreadsheets/d/${SOURCE_SHEET_ID}/export` +
+      `?format=pdf&size=A4&portrait=false&fitw=true&gridlines=false&gid=${templateSheetId}`;
 
     const pdfRes = await fetch(exportUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
     if (!pdfRes.ok) {
@@ -191,15 +242,21 @@ export async function generatePdfFromTemplate(
     }
     const pdfBuffer = Buffer.from(await pdfRes.arrayBuffer());
 
-    // Ganti export .xlsx dengan copy file native Google Spreadsheet
     const DEST_FOLDER_ID = '1RnnandGlU_k4CBW2DcJlXHZNxHTwA7Xw';
     try {
-      await drive.files.copy({
-        fileId: tempSpreadsheetId,
+      const tempSpreadsheetId = (await drive.files.create({
         requestBody: {
           name: `Report_TestFood_${data.tanggal}_${data.waktu}`,
+          mimeType: 'application/vnd.google-apps.spreadsheet',
           parents: [DEST_FOLDER_ID],
         },
+        fields: 'id',
+      })).data.id!;
+
+      const copyRes = await sheets.spreadsheets.sheets.copyTo({
+        spreadsheetId: SOURCE_SHEET_ID,
+        sheetId: templateSheetId,
+        requestBody: { destinationSpreadsheetId: tempSpreadsheetId },
       });
     } catch (copyErr: any) {
       warnings.push('Gagal menyalin spreadsheet ke folder tujuan: ' + (copyErr?.message || copyErr.toString()));
@@ -226,12 +283,11 @@ export async function generatePdfFromTemplate(
     const url = driveRes.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
     return { url, warnings };
   } finally {
-    if (tempSpreadsheetId) {
-      try {
-        await drive.files.delete({ fileId: tempSpreadsheetId });
-      } catch {
-        // gagal hapus bukan fatal
-      }
+    if (backup) {
+      await restoreTemplateData(sheets, backup);
+    }
+    if (lockAcquired) {
+      await releaseLock(sheets);
     }
   }
 }

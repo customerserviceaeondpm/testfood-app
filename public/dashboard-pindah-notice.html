@@ -215,7 +215,7 @@
       s--;
       if (s <= 0) {
         clearInterval(t);
-        window.location.href = 'https://testfood-app.vercel.app/dashboard.html';
+        window.open('https://testfood-app.vercel.app/dashboard.html', '_blank');
       } else if (el) {
         el.textContent = s;
       }

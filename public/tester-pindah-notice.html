@@ -70,7 +70,7 @@
       s--;
       if (s <= 0) {
         clearInterval(t);
-        window.location.href = 'https://testfood-app.vercel.app/tester.html';
+        window.open('https://testfood-app.vercel.app/tester.html', '_blank');
       } else if (el) {
         el.textContent = s;
       }

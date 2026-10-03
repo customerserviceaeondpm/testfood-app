@@ -255,18 +255,15 @@
   
   // Mapping Emoji Counter sesuai nuansa Departemen AEON DPM
   const counterEmojis = {
-    "DELICA": "🍱",
     "SUSHI": "🍣",
     "BAKERY": "🍞",
     "MINISTOP": "🏪",
     "CHICKEN": "🍗",
     "CUT FRUIT": "🍉",
+    "JUICE": "🧃",
     "REWARD KITCHEN": "🍳",
     "TEMPURA": "🍤",
-    "TEPPANYAKI": "🥩",
-    "PRODUCE": "🥬",
-    "FISH": "🐟",
-    "MEAT": "🥩"
+    "TEPPANYAKI": "🥩"
   };
 
   window.onload = () => renderDashboard();
@@ -394,8 +391,8 @@
 
     document.getElementById('totalMonthlyIssueLabel').innerText = globalMonthlyIssues.length;
 
-    // List counter utama di AEON DPM
-    const defaultCounters = ["DELICA", "SUSHI", "PRODUCE", "BAKERY", "FISH", "MEAT", "MINISTOP", "CHICKEN", "REWARD KITCHEN", "TEMPURA", "TEPPANYAKI", "CUT FRUIT"];
+    // List counter sesuai template laporan PDF
+    const defaultCounters = ["SUSHI", "MINISTOP", "TEMPURA", "TEPPANYAKI", "CHICKEN", "BAKERY", "CUT FRUIT", "JUICE", "REWARD KITCHEN"];
 
     const gridContainer = document.getElementById('counterGridContainer');
     gridContainer.innerHTML = '';

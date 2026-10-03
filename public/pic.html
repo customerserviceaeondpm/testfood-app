@@ -125,7 +125,7 @@
         </select>
       </div>
       <div class="mb-1">
-        <label class="small fw-bold text-muted" style="font-size: 10px;">DAFTAR PRODUK (MAKS 3)</label>
+        <label class="small fw-bold text-muted" style="font-size: 10px;">DAFTAR PRODUK</label>
         <div class="product-slots"></div>
         <button type="button" class="btn btn-outline-secondary btn-sm w-100 mt-2 add-product-btn" onclick="addProductSlot(this)">+ Tambah Produk</button>
       </div>
@@ -146,7 +146,6 @@ function removeItem(el) {
     const slots = row.querySelector('.product-slots');
     const cat = el.value;
     slots.innerHTML = '';
-    row.querySelector('.add-product-btn').disabled = false;
     addProductSlot(row.querySelector('.add-product-btn'));
   }
 
@@ -155,8 +154,6 @@ function removeItem(el) {
     const cat = row.querySelector('.counter-select').value;
     if (!cat) return alert('Pilih counter dulu!');
     const slots = row.querySelector('.product-slots');
-    const count = slots.querySelectorAll('.product-slot').length;
-    if (count >= 3) return;
     const slot = document.createElement('div');
     slot.className = 'product-slot input-group input-group-sm mb-1';
     if (cat === "OTHERS") {
@@ -167,13 +164,10 @@ function removeItem(el) {
         <button class="btn btn-outline-danger" type="button" onclick="removeProductSlot(this)">✖</button>`;
     }
     slots.appendChild(slot);
-    if (slots.querySelectorAll('.product-slot').length >= 3) btn.disabled = true;
   }
 
   function removeProductSlot(btn) {
-    const row = btn.closest('.item-row');
     btn.closest('.product-slot').remove();
-    row.querySelector('.add-product-btn').disabled = false;
   }
 
   function updateByProduct(el) {

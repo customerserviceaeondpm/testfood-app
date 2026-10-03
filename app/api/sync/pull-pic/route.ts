@@ -37,6 +37,7 @@ export async function GET(req: Request) {
     const idx = {
       tanggal: header.indexOf('tanggal'),
       waktu: header.indexOf('waktu'),
+      divisi: header.indexOf('divisi'),
       nama_pic: header.indexOf('nama_pic'),
       signature_url: header.indexOf('signature_url'),
       items: header.indexOf('items'),
@@ -60,6 +61,9 @@ export async function GET(req: Request) {
         const waktu = String(r[idx.waktu] || '').trim().toUpperCase();
         if (!tanggal || !waktu) return null;
 
+        const rawDivisi = idx.divisi !== -1 ? String(r[idx.divisi] || '').trim().toUpperCase() : '';
+        const divisi = ['DELICA', 'BAKERY', 'PRODUCE'].includes(rawDivisi) ? rawDivisi : 'DELICA';
+
         const namaPic = idx.nama_pic !== -1 ? (r[idx.nama_pic] || null) : null;
         const ttdRaw = idx.signature_url !== -1 ? (r[idx.signature_url] || null) : null;
 
@@ -73,23 +77,28 @@ export async function GET(req: Request) {
           }
         }
 
-        let signatureUrl = ttdRaw;
-        if (ttdRaw && typeof ttdRaw === 'string' && ttdRaw.startsWith('data:image')) {
+        let signatureUrl: string | null = null;
+        if (typeof ttdRaw === 'string' && ttdRaw.startsWith('http')) {
+          signatureUrl = ttdRaw;
+        } else if (typeof ttdRaw === 'string' && ttdRaw.startsWith('data:image/') && ttdRaw.includes(',') && ttdRaw.length > 100) {
           const base64 = ttdRaw.split(',')[1];
-          const buffer = Buffer.from(base64, 'base64');
-          const fileName = `pic_${tanggal}_${waktu}_${Date.now()}.png`;
-          const { error: uploadError } = await supabase.storage
-            .from('signatures')
-            .upload(fileName, buffer, { contentType: 'image/png', upsert: true });
-          if (!uploadError) {
-            const { data: pub } = supabase.storage.from('signatures').getPublicUrl(fileName);
-            signatureUrl = pub.publicUrl;
+          if (base64) {
+            const buffer = Buffer.from(base64, 'base64');
+            const fileName = `pic_${tanggal}_${waktu}_${Date.now()}.png`;
+            const { error: uploadError } = await supabase.storage
+              .from('signatures')
+              .upload(fileName, buffer, { contentType: 'image/png', upsert: true });
+            if (!uploadError) {
+              const { data: pub } = supabase.storage.from('signatures').getPublicUrl(fileName);
+              signatureUrl = pub.publicUrl;
+            }
           }
         }
 
         return {
           tanggal,
           waktu,
+          divisi,
           nama_pic: namaPic,
           signature_url: signatureUrl,
           items,
@@ -107,7 +116,7 @@ export async function GET(req: Request) {
     // SATU kali panggilan upsert untuk semua baris, bukan loop satu-satu
     const { error } = await supabase
       .from('pic_submissions')
-      .upsert(records, { onConflict: 'tanggal,waktu' });
+      .upsert(records, { onConflict: 'tanggal,waktu,divisi' });
 
     if (error) {
       return Response.json({ success: false, message: error.message }, { status: 500 });

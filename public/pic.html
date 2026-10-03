@@ -94,14 +94,41 @@
     }
   };
 
-  function productDropdownHtml(cat) {
-    const sortedSub = (MASTER_PRODUK[cat] || []).sort();
+  function productDropdownHtml(cat, exclude = [], keep = '') {
+    const used = new Set(exclude.map(v => String(v).trim().toLowerCase()));
+    if (keep) used.delete(String(keep).trim().toLowerCase());
+    const sortedSub = (MASTER_PRODUK[cat] || []).sort().filter(p => !used.has(String(p).trim().toLowerCase()));
     return `
       <select class="form-select form-select-sm product-select" onchange="updateByProduct(this)">
         <option value="">-- Pilih Produk ${cat} --</option>
-        ${sortedSub.map(p => `<option value="${p}">${p}</option>`).join('')}
+        ${sortedSub.map(p => `<option value="${p}"${p === keep ? ' selected' : ''}>${p}</option>`).join('')}
         <option value="MANUAL" style="font-weight:bold; color:blue;">[ + ] INPUT MANUAL</option>
       </select>`;
+  }
+
+  function selectedInCard(row) {
+    const vals = [];
+    row.querySelectorAll('.product-select').forEach(s => {
+      if (s.value && s.value !== 'MANUAL') vals.push(s.value);
+    });
+    row.querySelectorAll('.product-manual').forEach(i => {
+      if (i.value.trim()) vals.push(i.value.trim());
+    });
+    return vals;
+  }
+
+  function refreshCardDropdowns(row) {
+    const cat = row.querySelector('.counter-select').value;
+    if (!cat || cat === 'OTHERS') return;
+    const used = selectedInCard(row);
+    row.querySelectorAll('.product-slot').forEach(slot => {
+      const sel = slot.querySelector('.product-select');
+      if (!sel) return;
+      const cur = (sel.value && sel.value !== 'MANUAL') ? sel.value : '';
+      const tmp = document.createElement('div');
+      tmp.innerHTML = productDropdownHtml(cat, used, cur);
+      sel.replaceWith(tmp.firstElementChild);
+    });
   }
 
   function addItem() {
@@ -160,21 +187,29 @@ function removeItem(el) {
       slot.innerHTML = `<input type="text" class="form-control product-manual" placeholder="Ketik Nama Produk...">
         <button class="btn btn-outline-danger" type="button" onclick="removeProductSlot(this)">✖</button>`;
     } else {
-      slot.innerHTML = `${productDropdownHtml(cat)}
+      slot.innerHTML = `${productDropdownHtml(cat, selectedInCard(row))}
         <button class="btn btn-outline-danger" type="button" onclick="removeProductSlot(this)">✖</button>`;
     }
     slots.appendChild(slot);
+    refreshCardDropdowns(row);
   }
 
   function removeProductSlot(btn) {
+    const row = btn.closest('.item-row');
     btn.closest('.product-slot').remove();
+    refreshCardDropdowns(row);
   }
 
   function updateByProduct(el) {
-    if (el.value !== "MANUAL") return;
+    const row = el.closest('.item-row');
+    if (el.value !== "MANUAL") {
+      refreshCardDropdowns(row);
+      return;
+    }
     const slot = el.closest('.product-slot');
-    slot.innerHTML = `<input type="text" class="form-control product-manual" placeholder="Nama menu...">
+    slot.innerHTML = `<input type="text" class="form-control product-manual" placeholder="Nama menu..." oninput="refreshCardDropdowns(this.closest('.item-row'))">
       <button class="btn btn-outline-secondary" type="button" onclick="cancelManual(this)">✖</button>`;
+    refreshCardDropdowns(row);
   }
 
   function cancelManual(btn) {
@@ -185,9 +220,10 @@ function removeItem(el) {
       slot.innerHTML = `<input type="text" class="form-control form-control-sm product-manual" placeholder="Ketik Nama Produk...">
         <button class="btn btn-outline-danger" type="button" onclick="removeProductSlot(this)">✖</button>`;
     } else {
-      slot.innerHTML = `${productDropdownHtml(cat)}
+      slot.innerHTML = `${productDropdownHtml(cat, selectedInCard(row))}
         <button class="btn btn-outline-danger" type="button" onclick="removeProductSlot(this)">✖</button>`;
     }
+    refreshCardDropdowns(row);
   }
 
   async function simpanData() {
@@ -205,6 +241,15 @@ function removeItem(el) {
         if (n && n !== "MANUAL") items.push({ counter: c, nama: n });
       });
     });
+
+    const seen = new Set();
+    const dupe = items.find(it => {
+      const k = `${it.counter}||${it.nama.trim().toLowerCase()}`;
+      if (seen.has(k)) return true;
+      seen.add(k);
+      return false;
+    });
+    if (dupe) return alert(`⚠️ Produk duplikat di counter ${dupe.counter}: "${dupe.nama}"`);
 
     if(!items.length || signaturePad.isEmpty() || !document.getElementById('namaPic').value || !document.getElementById('tanggal').value) return alert("⚠️ Lengkapi data!");
 

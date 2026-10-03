@@ -9,6 +9,8 @@
   <style>
     :root { --primary-color: #6366f1; --bg-color: #f8fafc; }
     body { background-color: var(--bg-color); font-family: 'Plus Jakarta Sans', sans-serif; padding-bottom: 40px; }
+    html, body { height: 100%; }
+    body { overflow: hidden; }
     .move-notice {
       position: fixed;
       inset: 0;
@@ -18,6 +20,12 @@
       align-items: center;
       justify-content: center;
       padding: 16px;
+      min-height: 100dvh;
+      box-sizing: border-box;
+    }
+    .move-card {
+      max-height: calc(100dvh - 32px);
+      overflow-y: auto;
     }
     .move-notice.hidden { display: none; }
     .move-card {
@@ -51,8 +59,24 @@
     <p class="text-muted small">Form Test Food sudah pindah ke link baru. Semua fungsi di halaman ini tetap berjalan normal.</p>
     <a href="https://testfood-app.vercel.app/tester.html" target="_blank" class="btn w-100 fw-bold text-white" style="background: var(--primary-color);">Buka Form Tester Baru</a>
     <p class="small text-muted mt-2 mb-0">Simpan/bookmark link baru ini ya.</p>
+    <p class="small fw-bold mt-2 mb-0" style="color: var(--primary-color);">Mengalihkan otomatis dalam <span id="countdown">5</span> detik...</p>
   </div>
 </div>
+<script>
+  (function () {
+    var s = 5;
+    var el = document.getElementById('countdown');
+    var t = setInterval(function () {
+      s--;
+      if (s <= 0) {
+        clearInterval(t);
+        window.location.href = 'https://testfood-app.vercel.app/tester.html';
+      } else if (el) {
+        el.textContent = s;
+      }
+    }, 1000);
+  })();
+</script>
 
 <div class="header-section text-center">
   <h4 class="fw-bold m-0">FORM TEST FOOD</h4>

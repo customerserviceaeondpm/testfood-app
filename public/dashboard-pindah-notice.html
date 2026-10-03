@@ -26,12 +26,25 @@
     }
 
     .move-notice {
-      background: #fff7ed;
-      border: 1px solid #fdba74;
-      border-left: 6px solid #ea580c;
-      border-radius: 12px;
-      padding: 12px;
-      margin: 10px;
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: rgba(248, 250, 252, 0.97);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .move-notice.hidden { display: none; }
+    .move-card {
+      background: white;
+      border-radius: 20px;
+      padding: 32px 24px;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.12);
+      border-top: 6px solid var(--aeon-magenta);
     }
 
     .header {
@@ -176,12 +189,18 @@
 </head>
 <body>
 
-<div class="main-wrapper">
-  <div class="move-notice">
-    <div class="fw-bold" style="font-size: 13px;">📢 Link Dashboard Sudah Pindah</div>
-    <div class="small text-muted mt-1">Gunakan link baru berikut. Halaman ini tetap bisa dipakai sementara.</div>
-    <a href="https://testfood-app.vercel.app/dashboard.html" target="_blank" class="btn btn-sm w-100 fw-bold text-white mt-2" style="background: var(--aeon-magenta);">Buka Dashboard Baru</a>
+<div class="move-notice" id="moveNotice">
+  <div class="move-card">
+    <div style="font-size: 48px;">📢</div>
+    <h5 class="fw-bold mt-2" style="color: var(--aeon-magenta);">Link Sudah Pindah</h5>
+    <p class="text-muted small">Dashboard Monitoring Test Food DPM sudah pindah ke link baru. Semua fungsi di halaman ini tetap berjalan normal.</p>
+    <a href="https://testfood-app.vercel.app/dashboard.html" target="_blank" class="btn w-100 fw-bold text-white" style="background: var(--aeon-magenta);">Buka Dashboard Baru</a>
+    <button class="btn btn-link btn-sm text-muted mt-2" onclick="document.getElementById('moveNotice').classList.add('hidden')">Tetap di halaman ini</button>
+    <p class="small text-muted mt-2 mb-0">Simpan/bookmark link baru ini ya.</p>
   </div>
+</div>
+
+<div class="main-wrapper">
 
   <div class="header text-center">
     <h6 class="m-0 fw-bold" style="font-size: 14px;">DASHBOARD MONITORING TEST FOOD DPM</h6>

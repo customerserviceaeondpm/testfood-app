@@ -8,17 +8,23 @@ create table if not exists products (
   created_at timestamptz default now()
 );
 
--- 2. Input harian dari PIC (menu + tanda tangan)
+-- 2. Input harian dari PIC (menu + tanda tangan), satu baris per divisi
 create table if not exists pic_submissions (
   id bigint generated always as identity primary key,
   tanggal date not null,
   waktu text not null check (waktu in ('PAGI','SORE')),
+  divisi text not null default 'DELICA' check (divisi in ('DELICA','BAKERY','PRODUCE')),
   nama_pic text,
   signature_url text,
   items jsonb not null default '[]',
   updated_at timestamptz default now(),
-  unique (tanggal, waktu)
+  unique (tanggal, waktu, divisi)
 );
+
+-- Migrasi dari skema lama (satu baris per shift) ke per-divisi:
+--   alter table pic_submissions add column if not exists divisi text not null default 'DELICA' check (divisi in ('DELICA','BAKERY','PRODUCE'));
+--   alter table pic_submissions drop constraint if exists pic_submissions_tanggal_waktu_key;
+--   alter table pic_submissions add constraint pic_submissions_tanggal_waktu_divisi_key unique (tanggal, waktu, divisi);
 
 -- 3. Draft tester (sebelum submit final)
 create table if not exists tester_drafts (

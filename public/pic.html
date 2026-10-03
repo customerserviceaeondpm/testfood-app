@@ -38,8 +38,16 @@
 <div class="container">
   <div class="main-card">
     <div class="row g-2 mb-3">
-      <div class="col-6"><label class="small fw-bold">Tanggal</label><input type="date" id="tanggal" class="form-control"></div>
-      <div class="col-6"><label class="small fw-bold">Shift</label><select id="shiftPic" class="form-select"><option value="PAGI">PAGI</option><option value="SORE">SORE</option></select></div>
+      <div class="col-6"><label class="small fw-bold">Tanggal</label><input type="date" id="tanggal" class="form-control" onchange="loadDivisiData()"></div>
+      <div class="col-6"><label class="small fw-bold">Shift</label><select id="shiftPic" class="form-select" onchange="loadDivisiData()"><option value="PAGI">PAGI</option><option value="SORE">SORE</option></select></div>
+    </div>
+    <div class="mb-3">
+      <label class="small fw-bold">Divisi</label>
+      <select id="divisiPic" class="form-select" onchange="onDivisiChange()">
+        <option value="DELICA" selected>DELICA / SUSHI</option>
+        <option value="BAKERY">BAKERY</option>
+        <option value="PRODUCE">PRODUCE (Cut Fruit & Juice)</option>
+      </select>
     </div>
     <div class="mb-3">
       <label class="small fw-bold">Nama PIC (Contoh: Budi-Sushi)</label>
@@ -131,13 +139,79 @@
     });
   }
 
-  function addItem() {
+  const DIVISI_COUNTERS = {
+    DELICA: null,
+    BAKERY: ['BAKERY'],
+    PRODUCE: ['CUT FRUIT', 'JUICE'],
+  };
+
+  function countersForDivisi() {
+    const d = document.getElementById('divisiPic').value || 'DELICA';
+    const only = DIVISI_COUNTERS[d];
+    const all = Object.keys(MASTER_PRODUK).sort();
+    if (!only) return all.filter(c => c !== 'CUT FRUIT' && c !== 'JUICE' && c !== 'BAKERY' && c !== 'OTHERS');
+    return only.filter(c => MASTER_PRODUK[c]);
+  }
+
+  function onDivisiChange() {
+    document.getElementById('item-container').innerHTML = '';
+    addItem();
+    loadDivisiData();
+  }
+
+  async function loadDivisiData() {
+    const t = document.getElementById('tanggal').value;
+    const w = document.getElementById('shiftPic').value;
+    const d = document.getElementById('divisiPic').value;
+    if (!t || !w || !d) return;
+    try {
+      const res = await fetch(`/api/pic?tanggal=${t}&waktu=${w}&divisi=${d}`).then(r => r.json());
+      if (!res.success) return;
+      document.getElementById('namaPic').value = res.namaPic || '';
+      const container = document.getElementById('item-container');
+      container.innerHTML = '';
+      const groups = {};
+      (res.items || []).forEach(it => {
+        if (!groups[it.counter]) groups[it.counter] = [];
+        groups[it.counter].push(it.nama);
+      });
+      const counters = Object.keys(groups);
+      if (counters.length === 0) { addItem(); return; }
+      counters.forEach(c => {
+        addItem(c);
+        const row = container.querySelector('.item-row:last-child');
+        const names = groups[c];
+        names.forEach((n, i) => {
+          if (i > 0) addProductSlot(row.querySelector('.add-product-btn'), true);
+          const slot = row.querySelectorAll('.product-slot')[i];
+          if (!slot) return;
+          const sel = slot.querySelector('.product-select');
+          if (sel) {
+            const opt = Array.from(sel.options).find(o => o.value === n);
+            if (opt) sel.value = n;
+            else {
+              slot.innerHTML = `<input type="text" class="form-control product-manual" value="${n.replace(/"/g, '&quot;')}">
+                <button class="btn btn-outline-danger" type="button" onclick="removeProductSlot(this)">✖</button>`;
+            }
+          } else {
+            const inp = slot.querySelector('.product-manual');
+            if (inp) inp.value = n;
+          }
+        });
+        refreshCardDropdowns(row);
+      });
+    } catch (err) {
+      console.error('Gagal load data divisi:', err);
+    }
+  }
+
+  function addItem(presetCounter) {
     const container = document.getElementById('item-container');
     const itemCount = container.querySelectorAll('.item-row').length + 1; // Penomoran
     const div = document.createElement('div');
     div.className = 'item-row shadow-sm';
 
-    const sortedCounters = Object.keys(MASTER_PRODUK).sort();
+    const sortedCounters = countersForDivisi();
 
     div.innerHTML = `
       <div class="d-flex justify-content-between align-items-center mb-2">
@@ -147,8 +221,8 @@
       <div class="mb-2">
         <label class="small fw-bold text-muted" style="font-size: 10px;">PILIH COUNTER</label>
         <select class="form-select form-select-sm counter-select" onchange="updateByCounter(this)">
-          <option value="" disabled selected>-- Pilih --</option>
-          ${sortedCounters.map(c => `<option value="${c}">${c}</option>`).join('')}
+          <option value="" disabled${presetCounter ? '' : ' selected'}>-- Pilih --</option>
+          ${sortedCounters.map(c => `<option value="${c}"${c === presetCounter ? ' selected' : ''}>${c}</option>`).join('')}
         </select>
       </div>
       <div class="mb-1">
@@ -158,6 +232,7 @@
       </div>
     `;
     container.appendChild(div);
+    if (presetCounter) addProductSlot(div.querySelector('.add-product-btn'), true);
   }
 
 function removeItem(el) {
@@ -176,7 +251,7 @@ function removeItem(el) {
     addProductSlot(row.querySelector('.add-product-btn'));
   }
 
-  function addProductSlot(btn) {
+  function addProductSlot(btn, skipRefresh) {
     const row = btn.closest('.item-row');
     const cat = row.querySelector('.counter-select').value;
     if (!cat) return alert('Pilih counter dulu!');
@@ -191,7 +266,7 @@ function removeItem(el) {
         <button class="btn btn-outline-danger" type="button" onclick="removeProductSlot(this)">✖</button>`;
     }
     slots.appendChild(slot);
-    refreshCardDropdowns(row);
+    if (!skipRefresh) refreshCardDropdowns(row);
   }
 
   function removeProductSlot(btn) {
@@ -263,6 +338,7 @@ function removeItem(el) {
         body: JSON.stringify({
           tanggal: document.getElementById('tanggal').value,
           waktu: document.getElementById('shiftPic').value,
+          divisi: document.getElementById('divisiPic').value,
           nama: document.getElementById('namaPic').value,
           sigData: signaturePad.toDataURL(),
           items: items

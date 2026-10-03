@@ -1,5 +1,7 @@
 import { getSupabase } from '@/lib/supabase';
 import { generateReport } from '@/lib/report';
+import { counterToDivisi, sortNamesByDivisi, DIVISI_ORDER } from '@/lib/divisi';
+import { compositeSignaturesHorizontal } from '@/lib/signatureComposite';
 
 export const maxDuration = 60;
 
@@ -7,59 +9,82 @@ export async function POST(req: Request) {
   const data = await req.json();
   const supabase = getSupabase();
 
-  // Ambil nama PIC, tanda tangan PIC, dan daftar item PIC untuk tanggal & shift ini
-  const { data: pic } = await supabase
+  // Ambil semua baris PIC per divisi untuk tanggal & shift ini
+  const { data: picRows } = await supabase
     .from('pic_submissions')
-    .select('nama_pic, signature_url, items')
+    .select('divisi, nama_pic, signature_url, items')
     .eq('tanggal', data.tanggal)
-    .eq('waktu', data.waktu)
-    .maybeSingle();
+    .eq('waktu', data.waktu);
 
-  if (!pic) {
+  const rows = picRows || [];
+  const delicaRow = rows.find((r: any) => String(r.divisi || 'DELICA').toUpperCase() === 'DELICA');
+
+  if (!delicaRow) {
     return Response.json({
       success: false,
-      message: `Data belum diinput PIC untuk tanggal ${data.tanggal} shift ${data.waktu}`,
+      message: `Data belum diinput PIC Delica/Sushi untuk tanggal ${data.tanggal} shift ${data.waktu}`,
     });
   }
+
+  const picNames = sortNamesByDivisi(
+    rows.map((r: any) => ({ divisi: String(r.divisi || 'DELICA'), nama: r.nama_pic || '' }))
+  );
 
   // Hapus record lama tanggal+shift yang sama, lalu insert baru (proteksi double input)
   await supabase.from('test_food_records').delete().eq('tanggal', data.tanggal).eq('waktu', data.waktu);
 
-  const rows = (data.items || []).map((item: any) => ({
+  const rowsToInsert = (data.items || []).map((item: any) => ({
     tanggal: data.tanggal,
     waktu: data.waktu,
     mod: data.mod,
-    pic: pic.nama_pic,
+    pic: picNames,
     counter: item.counter,
     nama_produk: item.nama,
     nilai: item.nilai,
     komentar: item.comment,
   }));
 
-  const { error } = await supabase.from('test_food_records').insert(rows);
+  const { error } = await supabase.from('test_food_records').insert(rowsToInsert);
   if (error) return Response.json({ success: false, message: error.message });
 
-  // Item yang ditambahkan MANUAL oleh tester (biasanya dari departemen Bakery/Produce
-  // yang tidak selalu diinput PIC) disimpan balik ke pic_submissions.items, supaya
-  // ke depannya PIC/tester tidak perlu input manual lagi untuk menu yang sama.
+  // Item MANUAL dari tester disimpan balik ke pic_submissions divisi terkait,
+  // supaya ke depannya PIC/tester tidak perlu input manual lagi untuk menu yang sama.
   try {
     const manualItems = (data.items || []).filter((item: any) => item.source === 'MANUAL');
     if (manualItems.length > 0) {
-      const existingItems: any[] = Array.isArray(pic.items) ? pic.items : [];
+      const byDivisi: Record<string, any[]> = {};
+      for (const item of manualItems) {
+        const d = counterToDivisi(item.counter);
+        if (!byDivisi[d]) byDivisi[d] = [];
+        byDivisi[d].push(item);
+      }
       const keyOf = (c: string, n: string) => `${String(c || '').trim().toUpperCase()}|${String(n || '').trim().toLowerCase()}`;
-      const existingKeys = new Set(existingItems.map((it: any) => keyOf(it.counter, it.nama)));
-
-      const newEntries = manualItems
-        .filter((item: any) => !existingKeys.has(keyOf(item.counter, item.nama)))
-        .map((item: any) => ({ counter: item.counter, nama: item.nama }));
-
-      if (newEntries.length > 0) {
+      for (const div of Object.keys(byDivisi)) {
+        const existing = rows.find((r: any) => String(r.divisi || 'DELICA').toUpperCase() === div);
+        const existingItems: any[] = existing && Array.isArray(existing.items) ? existing.items : [];
+        const existingKeys = new Set(existingItems.map((it: any) => keyOf(it.counter, it.nama)));
+        const newEntries = byDivisi[div]
+          .filter((item: any) => !existingKeys.has(keyOf(item.counter, item.nama)))
+          .map((item: any) => ({ counter: item.counter, nama: item.nama }));
+        if (newEntries.length === 0) continue;
         const mergedItems = [...existingItems, ...newEntries];
-        await supabase
-          .from('pic_submissions')
-          .update({ items: mergedItems, updated_at: new Date().toISOString() })
-          .eq('tanggal', data.tanggal)
-          .eq('waktu', data.waktu);
+        if (existing) {
+          await supabase
+            .from('pic_submissions')
+            .update({ items: mergedItems, updated_at: new Date().toISOString() })
+            .eq('tanggal', data.tanggal)
+            .eq('waktu', data.waktu)
+            .eq('divisi', div);
+        } else if (div !== 'DELICA') {
+          await supabase.from('pic_submissions').insert({
+            tanggal: data.tanggal,
+            waktu: data.waktu,
+            divisi: div,
+            nama_pic: null,
+            signature_url: null,
+            items: newEntries,
+          });
+        }
       }
     }
   } catch (mergeErr) {
@@ -68,7 +93,31 @@ export async function POST(req: Request) {
   }
 
   try {
-    const result = await generateReport(data, pic.nama_pic, pic.signature_url || null, supabase);
+    const rank = (d: string) => {
+      const i = DIVISI_ORDER.indexOf(String(d || 'DELICA').toUpperCase() as any);
+      return i === -1 ? 99 : i;
+    };
+    const ordered = [...rows].sort(
+      (a: any, b: any) => rank(a.divisi) - rank(b.divisi)
+    );
+    const sigUrls = ordered.map((r: any) => r.signature_url || null);
+
+    let compositeUrl: string | null = sigUrls.find((u: string | null) => !!u) || null;
+    if (sigUrls.filter(Boolean).length > 1) {
+      const composite = await compositeSignaturesHorizontal(sigUrls);
+      if (composite) {
+        const fileName = `pic_composite_${data.tanggal}_${data.waktu}_${Date.now()}.png`;
+        const { error: upErr } = await supabase.storage
+          .from('signatures')
+          .upload(fileName, composite, { contentType: 'image/png', upsert: true });
+        if (!upErr) {
+          const { data: pub } = supabase.storage.from('signatures').getPublicUrl(fileName);
+          compositeUrl = pub.publicUrl;
+        }
+      }
+    }
+
+    const result = await generateReport(data, picNames, compositeUrl, supabase);
     return Response.json({
       success: true,
       url: result.url,

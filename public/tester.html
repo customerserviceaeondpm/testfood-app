@@ -343,6 +343,12 @@
     document.getElementById('item-container').innerHTML = '';
     res.items.forEach((item, i) => renderItemRow({ counter: item.counter, nama: item.nama, nilai: "3", comment: "", source: 'PIC' }, i));
     saveProgress();
+    const masuk = res.divisiMasuk || [];
+    const kurang = ['DELICA', 'BAKERY', 'PRODUCE'].filter(d => !masuk.includes(d));
+    if (kurang.length > 0) {
+      const label = { DELICA: 'Delica/Sushi', BAKERY: 'Bakery', PRODUCE: 'Produce' };
+      alert('⚠️ Divisi belum input: ' + kurang.map(d => label[d] || d).join(', ') + '. Item terkait perlu diinput manual.');
+    }
   }
 
   async function simpanDraft() {

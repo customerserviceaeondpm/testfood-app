@@ -102,9 +102,13 @@ export async function POST(req: Request) {
     );
     const sigUrls = ordered.map((r: any) => r.signature_url || null);
 
-    let compositeUrl: string | null = sigUrls.find((u: string | null) => !!u) || null;
-    if (sigUrls.filter(Boolean).length > 1) {
-      const composite = await compositeSignaturesHorizontal(sigUrls);
+    const reportWarnings: string[] = [];
+    const httpUrls = sigUrls.filter(
+      (u: string | null): u is string => !!u && u.startsWith('http')
+    );
+    let compositeUrl: string | null = httpUrls[0] || null;
+    if (httpUrls.length > 1) {
+      const composite = await compositeSignaturesHorizontal(httpUrls, reportWarnings);
       if (composite) {
         const fileName = `pic_composite_${data.tanggal}_${data.waktu}_${Date.now()}.png`;
         const { error: upErr } = await supabase.storage
@@ -113,11 +117,16 @@ export async function POST(req: Request) {
         if (!upErr) {
           const { data: pub } = supabase.storage.from('signatures').getPublicUrl(fileName);
           compositeUrl = pub.publicUrl;
+        } else {
+          reportWarnings.push(`Gagal upload TTD PIC gabungan: ${upErr.message}`);
         }
+      } else {
+        reportWarnings.push('TTD PIC gabungan gagal dibuat, pakai TTD pertama');
       }
     }
 
     const result = await generateReport(data, picNames, compositeUrl, supabase);
+    result.warnings.unshift(...reportWarnings);
     return Response.json({
       success: true,
       url: result.url,

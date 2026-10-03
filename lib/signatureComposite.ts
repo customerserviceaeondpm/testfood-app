@@ -33,8 +33,15 @@ function scaleToHeight(src: PNG, targetH: number): PNG {
   return out;
 }
 
-export async function compositeSignaturesHorizontal(urls: (string | null)[]): Promise<Buffer | null> {
-  const valid = urls.filter((u): u is string => !!u);
+export async function compositeSignaturesHorizontal(
+  urls: (string | null)[],
+  warnings?: string[]
+): Promise<Buffer | null> {
+  const rawValid = urls.filter((u): u is string => !!u);
+  const valid = rawValid.filter((u) => u.startsWith('http'));
+  if (warnings && rawValid.length !== valid.length) {
+    warnings.push(`${rawValid.length - valid.length} TTD PIC dilewati (URL tidak valid)`);
+  }
   if (valid.length === 0) return null;
   if (valid.length === 1) {
     try {
@@ -49,7 +56,11 @@ export async function compositeSignaturesHorizontal(urls: (string | null)[]): Pr
   const images: PNG[] = [];
   for (const url of valid) {
     const img = await fetchPng(url);
-    if (img) images.push(scaleToHeight(img, TARGET_H));
+    if (img) {
+      images.push(scaleToHeight(img, TARGET_H));
+    } else if (warnings) {
+      warnings.push(`TTD PIC gagal dimuat: ${url}`);
+    }
   }
   if (images.length === 0) return null;
   if (images.length === 1) {

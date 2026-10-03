@@ -79,18 +79,26 @@ export async function POST(req: Request) {
 
   const divisi = normalizeDivisi(body.divisi) || 'DELICA';
 
-  let signatureUrl = body.sigData;
-  if (body.sigData && body.sigData.startsWith('data:image')) {
+  let signatureUrl: string | null = null;
+  if (typeof body.signature_url === 'string' && body.signature_url.startsWith('http')) {
+    signatureUrl = body.signature_url;
+  } else if (typeof body.sigData === 'string' && body.sigData.startsWith('data:image/') && body.sigData.includes(',') && body.sigData.length > 100) {
     const base64 = body.sigData.split(',')[1];
-    const buffer = Buffer.from(base64, 'base64');
-    const fileName = `pic_${divisi.toLowerCase()}_${body.tanggal}_${body.waktu}_${Date.now()}.png`;
-    const { error: uploadError } = await supabase.storage
-      .from('signatures')
-      .upload(fileName, buffer, { contentType: 'image/png', upsert: true });
-    if (!uploadError) {
-      const { data: pub } = supabase.storage.from('signatures').getPublicUrl(fileName);
-      signatureUrl = pub.publicUrl;
+    if (base64) {
+      const buffer = Buffer.from(base64, 'base64');
+      const fileName = `pic_${divisi.toLowerCase()}_${body.tanggal}_${body.waktu}_${Date.now()}.png`;
+      const { error: uploadError } = await supabase.storage
+        .from('signatures')
+        .upload(fileName, buffer, { contentType: 'image/png', upsert: true });
+      if (!uploadError) {
+        const { data: pub } = supabase.storage.from('signatures').getPublicUrl(fileName);
+        signatureUrl = pub.publicUrl;
+      }
     }
+  }
+
+  if (!signatureUrl) {
+    return Response.json('❌ Tanda tangan belum tersimpan. Simpan TTD dulu sebelum submit.', { status: 400 });
   }
 
   const { error } = await supabase.from('pic_submissions').upsert(

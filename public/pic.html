@@ -168,6 +168,11 @@
       const res = await fetch(`/api/pic?tanggal=${t}&waktu=${w}&divisi=${d}`).then(r => r.json());
       if (!res.success) return;
       document.getElementById('namaPic').value = res.namaPic || '';
+      picSignatureUrl = res.sigPic && res.sigPic.startsWith('http') ? res.sigPic : null;
+      if (picSignatureUrl) {
+        document.getElementById('padPIC').style.display = 'block';
+        document.getElementById('sigPlaceholder').style.display = 'none';
+      }
       const container = document.getElementById('item-container');
       container.innerHTML = '';
       const groups = {};
@@ -326,7 +331,8 @@ function removeItem(el) {
     });
     if (dupe) return alert(`⚠️ Produk duplikat di counter ${dupe.counter}: "${dupe.nama}"`);
 
-    if(!items.length || signaturePad.isEmpty() || !document.getElementById('namaPic').value || !document.getElementById('tanggal').value) return alert("⚠️ Lengkapi data!");
+    if(!items.length || !document.getElementById('namaPic').value || !document.getElementById('tanggal').value) return alert("⚠️ Lengkapi data!");
+    if(!picSignatureUrl) return alert("⚠️ Simpan tanda tangan dulu via tombol signature!");
 
     const btn = document.getElementById('btnSimpan');
     btn.disabled = true; btn.innerHTML = "⌛ Menyimpan...";
@@ -340,7 +346,7 @@ function removeItem(el) {
           waktu: document.getElementById('shiftPic').value,
           divisi: document.getElementById('divisiPic').value,
           nama: document.getElementById('namaPic').value,
-          sigData: signaturePad.toDataURL(),
+          signature_url: picSignatureUrl,
           items: items
         })
       }).then(r => r.json());
@@ -397,23 +403,66 @@ function removeItem(el) {
     if (modalSignaturePad) modalSignaturePad.clear();
   }
   
-  function saveModalSignature() {
+  let picSignatureUrl = null;
+
+  async function saveModalSignature() {
     if (!modalSignaturePad || modalSignaturePad.isEmpty()) {
       alert('Tanda tangan masih kosong!');
       return;
     }
-    
+
     const dataUrl = modalSignaturePad.toDataURL();
-    signaturePad.fromDataURL(dataUrl);
-    
-    document.getElementById('padPIC').style.display = 'block';
-    document.getElementById('sigPlaceholder').style.display = 'none';
-    
-    bootstrap.Modal.getInstance(document.getElementById('signatureModal')).hide();
+    if (!dataUrl || dataUrl.length < 100 || !dataUrl.includes(',')) {
+      alert('Tanda tangan tidak valid, coba gambar ulang!');
+      return;
+    }
+
+    const modal = bootstrap.Modal.getInstance(document.getElementById('signatureModal'));
+    modal.hide();
+
+    const savedAlert = document.createElement('div');
+    savedAlert.className = 'alert alert-info alert-dismissible fade show position-fixed';
+    savedAlert.style.cssText = 'top: 20px; right: 20px; z-index: 9999; max-width: 300px;';
+    savedAlert.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Menyimpan signature...';
+    document.body.appendChild(savedAlert);
+
+    try {
+      const tanggal = document.getElementById('tanggal').value || new Date().toISOString().split('T')[0];
+      const waktu = document.getElementById('shiftPic').value || 'PAGI';
+
+      const res = await fetch('/api/signature/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sigData: dataUrl,
+          type: 'PIC',
+          tanggal,
+          waktu
+        })
+      }).then(r => r.json());
+
+      if (res.success) {
+        picSignatureUrl = res.url;
+        document.getElementById('padPIC').style.display = 'block';
+        document.getElementById('sigPlaceholder').style.display = 'none';
+        savedAlert.className = 'alert alert-success alert-dismissible fade show position-fixed';
+        savedAlert.innerHTML = '✅ Signature PIC berhasil disimpan!<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+        setTimeout(() => savedAlert.remove(), 3000);
+      } else {
+        throw new Error(res.message || 'Upload failed');
+      }
+    } catch (err) {
+      console.error('Gagal upload signature PIC:', err);
+      picSignatureUrl = null;
+      savedAlert.className = 'alert alert-danger alert-dismissible fade show position-fixed';
+      savedAlert.innerHTML = `❌ Gagal menyimpan signature: ${err.message}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
+      setTimeout(() => savedAlert.remove(), 5000);
+    }
   }
-  
+
   function clearSignature() {
     signaturePad.clear();
+    picSignatureUrl = null;
     document.getElementById('padPIC').style.display = 'none';
     document.getElementById('sigPlaceholder').style.display = 'block';
   }

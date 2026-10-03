@@ -99,13 +99,37 @@
     const itemCount = container.querySelectorAll('.item-row').length + 1; // Penomoran
     const div = document.createElement('div');
     div.className = 'item-row shadow-sm';
-    
+
+    const lastRow = container.querySelector('.item-row:last-child');
+    const lastCounter = lastRow ? lastRow.querySelector('.counter-select').value : '';
+
     const sortedCounters = Object.keys(MASTER_PRODUK).sort();
-    let allProducts = [];
-    Object.keys(MASTER_PRODUK).forEach(cat => {
-      MASTER_PRODUK[cat].forEach(p => allProducts.push({nama: p, kategori: cat}));
-    });
-    allProducts.sort((a, b) => a.nama.localeCompare(b.nama));
+    const counterOptions = sortedCounters.filter(c => c !== "OTHERS").map(c =>
+      `<option value="${c}"${c === lastCounter ? ' selected' : ''}>${c}</option>`
+    ).join('');
+
+    let productAreaHtml = '';
+    if (lastCounter && MASTER_PRODUK[lastCounter]) {
+      const sortedSub = (MASTER_PRODUK[lastCounter] || []).sort();
+      productAreaHtml = `
+        <select class="form-select form-select-sm product-select" onchange="updateByProduct(this)">
+          <option value="">-- Pilih Produk ${lastCounter} --</option>
+          ${sortedSub.map(p => `<option value="${p}" data-cat="${lastCounter}">${p}</option>`).join('')}
+          <option value="MANUAL" style="font-weight:bold; color:blue;">[ + ] INPUT MANUAL</option>
+        </select>`;
+    } else {
+      let allProducts = [];
+      Object.keys(MASTER_PRODUK).forEach(cat => {
+        MASTER_PRODUK[cat].forEach(p => allProducts.push({nama: p, kategori: cat}));
+      });
+      allProducts.sort((a, b) => a.nama.localeCompare(b.nama));
+      productAreaHtml = `
+        <select class="form-select form-select-sm product-select" onchange="updateByProduct(this)">
+          <option value="">-- Pilih Produk --</option>
+          ${allProducts.filter(p => p.kategori !== "OTHERS").map(item => `<option value="${item.nama}" data-cat="${item.kategori}">${item.nama}</option>`).join('')}
+          <option value="MANUAL" style="font-weight:bold; color:blue;">[ + ] INPUT MANUAL</option>
+        </select>`;
+    }
 
     div.innerHTML = `
       <div class="d-flex justify-content-between align-items-center mb-2">
@@ -115,18 +139,14 @@
       <div class="mb-2">
         <label class="small fw-bold text-muted" style="font-size: 10px;">1. PILIH COUNTER</label>
         <select class="form-select form-select-sm counter-select" onchange="updateByCounter(this)">
-          <option value="" disabled selected>-- Pilih --</option>
-          ${sortedCounters.filter(c => c !== "OTHERS").map(c => `<option value="${c}">${c}</option>`).join('')}
+          <option value="" disabled${lastCounter ? '' : ' selected'}>-- Pilih --</option>
+          ${counterOptions}
         </select>
       </div>
       <div class="mb-1">
         <label class="small fw-bold text-muted" style="font-size: 10px;">2. PILIH PRODUK</label>
         <div class="product-input-area">
-          <select class="form-select form-select-sm product-select" onchange="updateByProduct(this)">
-            <option value="">-- Pilih Produk --</option>
-            ${allProducts.filter(p => p.kategori !== "OTHERS").map(item => `<option value="${item.nama}" data-cat="${item.kategori}">${item.nama}</option>`).join('')}
-            <option value="MANUAL" style="font-weight:bold; color:blue;">[ + ] INPUT MANUAL</option>
-          </select>
+          ${productAreaHtml}
         </div>
       </div>
     `;

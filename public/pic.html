@@ -48,7 +48,7 @@
 
     <div class="section-title">Daftar Menu</div>
     <div id="item-container"></div>
-    <button class="btn btn-outline-secondary btn-sm w-100 mb-4" onclick="addItem()">+ Tambah Produk</button>
+    <button class="btn btn-outline-secondary btn-sm w-100 mb-4" onclick="addItem()">+ Tambah Counter</button>
 
     <div class="section-title">E-Signature</div>
     <div class="sig-wrapper" onclick="openSignatureModal()" style="cursor: pointer; display: flex; align-items: center; justify-content: center;">
@@ -94,60 +94,40 @@
     }
   };
 
+  function productDropdownHtml(cat) {
+    const sortedSub = (MASTER_PRODUK[cat] || []).sort();
+    return `
+      <select class="form-select form-select-sm product-select" onchange="updateByProduct(this)">
+        <option value="">-- Pilih Produk ${cat} --</option>
+        ${sortedSub.map(p => `<option value="${p}">${p}</option>`).join('')}
+        <option value="MANUAL" style="font-weight:bold; color:blue;">[ + ] INPUT MANUAL</option>
+      </select>`;
+  }
+
   function addItem() {
     const container = document.getElementById('item-container');
     const itemCount = container.querySelectorAll('.item-row').length + 1; // Penomoran
     const div = document.createElement('div');
     div.className = 'item-row shadow-sm';
 
-    const lastRow = container.querySelector('.item-row:last-child');
-    const lastCounter = lastRow ? lastRow.querySelector('.counter-select').value : '';
-
     const sortedCounters = Object.keys(MASTER_PRODUK).sort();
-    const counterOptions = sortedCounters.filter(c => c !== "OTHERS").map(c =>
-      `<option value="${c}"${c === lastCounter ? ' selected' : ''}>${c}</option>`
-    ).join('');
-
-    let productAreaHtml = '';
-    if (lastCounter && MASTER_PRODUK[lastCounter]) {
-      const sortedSub = (MASTER_PRODUK[lastCounter] || []).sort();
-      productAreaHtml = `
-        <select class="form-select form-select-sm product-select" onchange="updateByProduct(this)">
-          <option value="">-- Pilih Produk ${lastCounter} --</option>
-          ${sortedSub.map(p => `<option value="${p}" data-cat="${lastCounter}">${p}</option>`).join('')}
-          <option value="MANUAL" style="font-weight:bold; color:blue;">[ + ] INPUT MANUAL</option>
-        </select>`;
-    } else {
-      let allProducts = [];
-      Object.keys(MASTER_PRODUK).forEach(cat => {
-        MASTER_PRODUK[cat].forEach(p => allProducts.push({nama: p, kategori: cat}));
-      });
-      allProducts.sort((a, b) => a.nama.localeCompare(b.nama));
-      productAreaHtml = `
-        <select class="form-select form-select-sm product-select" onchange="updateByProduct(this)">
-          <option value="">-- Pilih Produk --</option>
-          ${allProducts.filter(p => p.kategori !== "OTHERS").map(item => `<option value="${item.nama}" data-cat="${item.kategori}">${item.nama}</option>`).join('')}
-          <option value="MANUAL" style="font-weight:bold; color:blue;">[ + ] INPUT MANUAL</option>
-        </select>`;
-    }
 
     div.innerHTML = `
       <div class="d-flex justify-content-between align-items-center mb-2">
-        <span class="badge bg-primary">ITEM #${itemCount}</span>
+        <span class="badge bg-primary">COUNTER #${itemCount}</span>
         <a href="javascript:void(0)" class="text-danger small" onclick="removeItem(this)">✖ Hapus</a>
       </div>
       <div class="mb-2">
-        <label class="small fw-bold text-muted" style="font-size: 10px;">1. PILIH COUNTER</label>
+        <label class="small fw-bold text-muted" style="font-size: 10px;">PILIH COUNTER</label>
         <select class="form-select form-select-sm counter-select" onchange="updateByCounter(this)">
-          <option value="" disabled${lastCounter ? '' : ' selected'}>-- Pilih --</option>
-          ${counterOptions}
+          <option value="" disabled selected>-- Pilih --</option>
+          ${sortedCounters.map(c => `<option value="${c}">${c}</option>`).join('')}
         </select>
       </div>
       <div class="mb-1">
-        <label class="small fw-bold text-muted" style="font-size: 10px;">2. PILIH PRODUK</label>
-        <div class="product-input-area">
-          ${productAreaHtml}
-        </div>
+        <label class="small fw-bold text-muted" style="font-size: 10px;">DAFTAR PRODUK (MAKS 3)</label>
+        <div class="product-slots"></div>
+        <button type="button" class="btn btn-outline-secondary btn-sm w-100 mt-2 add-product-btn" onclick="addProductSlot(this)">+ Tambah Produk</button>
       </div>
     `;
     container.appendChild(div);
@@ -157,51 +137,79 @@ function removeItem(el) {
     el.closest('.item-row').remove();
     // Re-index nomor setelah dihapus
     document.querySelectorAll('#item-container .badge').forEach((badge, index) => {
-      badge.innerText = 'ITEM #' + (index + 1);
+      badge.innerText = 'COUNTER #' + (index + 1);
     });
   }
-  
+
   function updateByCounter(el) {
-    const area = el.closest('.item-row').querySelector('.product-input-area');
+    const row = el.closest('.item-row');
+    const slots = row.querySelector('.product-slots');
     const cat = el.value;
+    slots.innerHTML = '';
+    row.querySelector('.add-product-btn').disabled = false;
+    addProductSlot(row.querySelector('.add-product-btn'));
+  }
+
+  function addProductSlot(btn) {
+    const row = btn.closest('.item-row');
+    const cat = row.querySelector('.counter-select').value;
+    if (!cat) return alert('Pilih counter dulu!');
+    const slots = row.querySelector('.product-slots');
+    const count = slots.querySelectorAll('.product-slot').length;
+    if (count >= 3) return;
+    const slot = document.createElement('div');
+    slot.className = 'product-slot input-group input-group-sm mb-1';
     if (cat === "OTHERS") {
-      area.innerHTML = `<input type="text" class="form-control form-control-sm product-manual" placeholder="Ketik Nama Produk...">`;
+      slot.innerHTML = `<input type="text" class="form-control product-manual" placeholder="Ketik Nama Produk...">
+        <button class="btn btn-outline-danger" type="button" onclick="removeProductSlot(this)">✖</button>`;
     } else {
-      const sortedSub = (MASTER_PRODUK[cat] || []).sort();
-      area.innerHTML = `
-        <select class="form-select form-select-sm product-select" onchange="updateByProduct(this)">
-          <option value="">-- Pilih Produk ${cat} --</option>
-          ${sortedSub.map(p => `<option value="${p}" data-cat="${cat}">${p}</option>`).join('')}
-          <option value="MANUAL" style="font-weight:bold; color:blue;">[ + ] INPUT MANUAL</option>
-        </select>`;
+      slot.innerHTML = `${productDropdownHtml(cat)}
+        <button class="btn btn-outline-danger" type="button" onclick="removeProductSlot(this)">✖</button>`;
     }
+    slots.appendChild(slot);
+    if (slots.querySelectorAll('.product-slot').length >= 3) btn.disabled = true;
+  }
+
+  function removeProductSlot(btn) {
+    const row = btn.closest('.item-row');
+    btn.closest('.product-slot').remove();
+    row.querySelector('.add-product-btn').disabled = false;
   }
 
   function updateByProduct(el) {
-    if (el.value === "MANUAL") {
-      const row = el.closest('.item-row');
-      const cSel = row.querySelector('.counter-select');
-      const area = row.querySelector('.product-input-area');
-      area.innerHTML = `<div class="input-group input-group-sm"><input type="text" class="form-control product-manual" placeholder="Nama menu..."><button class="btn btn-outline-secondary" type="button" onclick="cancelManual(this)">✖</button></div>`;
-    } else {
-      const cat = el.options[el.selectedIndex].getAttribute('data-cat');
-      if (cat) el.closest('.item-row').querySelector('.counter-select').value = cat;
-    }
+    if (el.value !== "MANUAL") return;
+    const slot = el.closest('.product-slot');
+    slot.innerHTML = `<input type="text" class="form-control product-manual" placeholder="Nama menu...">
+      <button class="btn btn-outline-secondary" type="button" onclick="cancelManual(this)">✖</button>`;
   }
 
-  function cancelManual(btn) { updateByCounter(btn.closest('.item-row').querySelector('.counter-select')); }
+  function cancelManual(btn) {
+    const row = btn.closest('.item-row');
+    const cat = row.querySelector('.counter-select').value;
+    const slot = btn.closest('.product-slot');
+    if (cat === "OTHERS" || !cat) {
+      slot.innerHTML = `<input type="text" class="form-control form-control-sm product-manual" placeholder="Ketik Nama Produk...">
+        <button class="btn btn-outline-danger" type="button" onclick="removeProductSlot(this)">✖</button>`;
+    } else {
+      slot.innerHTML = `${productDropdownHtml(cat)}
+        <button class="btn btn-outline-danger" type="button" onclick="removeProductSlot(this)">✖</button>`;
+    }
+  }
 
   async function simpanData() {
     const items = [];
     document.querySelectorAll('.item-row').forEach(row => {
       const c = row.querySelector('.counter-select').value;
-      const selectObj = row.querySelector('.product-select');
-      const manualObj = row.querySelector('.product-manual');
-      let n = "";
-      if (manualObj) n = manualObj.value;
-      else if (selectObj) n = selectObj.value;
-      
-      if(c && n && n !== "MANUAL") items.push({ counter: c, nama: n });
+      if (!c) return;
+      row.querySelectorAll('.product-slot').forEach(slot => {
+        const selectObj = slot.querySelector('.product-select');
+        const manualObj = slot.querySelector('.product-manual');
+        let n = "";
+        if (manualObj) n = manualObj.value.trim();
+        else if (selectObj) n = selectObj.value;
+
+        if (n && n !== "MANUAL") items.push({ counter: c, nama: n });
+      });
     });
 
     if(!items.length || signaturePad.isEmpty() || !document.getElementById('namaPic').value || !document.getElementById('tanggal').value) return alert("⚠️ Lengkapi data!");

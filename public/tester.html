@@ -134,61 +134,142 @@
 
 
 
-  // --- FUNGSI TAMBAH MANUAL ---
-  async function addItemManual() {
+  // --- KARTU MANUAL: 1 kartu = 1 counter + slot produk dinamis ---
+  function manualProductDropdownHtml(cat, exclude = [], keep = '') {
+    const used = new Set(exclude.map(v => String(v).trim().toLowerCase()));
+    if (keep) used.delete(String(keep).trim().toLowerCase());
+    const sortedSub = (MASTER_PRODUK[cat] || []).sort().filter(p => !used.has(String(p).trim().toLowerCase()));
+    return `
+      <select class="form-select form-select-sm manual-product-select" onchange="updateManualProduct(this)">
+        <option value="">-- Pilih Produk ${cat} --</option>
+        ${sortedSub.map(p => `<option value="${p}"${p === keep ? ' selected' : ''}>${p}</option>`).join('')}
+        <option value="MANUAL_INPUT" style="font-weight:bold; color:blue;">[ + ] KETIK NAMA MANUAL</option>
+      </select>`;
+  }
+
+  function manualSelectedInCard(card) {
+    const vals = [];
+    card.querySelectorAll('.manual-product-select').forEach(s => {
+      if (s.value && s.value !== 'MANUAL_INPUT') vals.push(s.value);
+    });
+    card.querySelectorAll('.manual-product-manual').forEach(i => {
+      if (i.value.trim()) vals.push(i.value.trim());
+    });
+    return vals;
+  }
+
+  function refreshManualDropdowns(card) {
+    const cat = card.querySelector('.manual-counter-select').value;
+    if (!cat) return;
+    const used = manualSelectedInCard(card);
+    card.querySelectorAll('.manual-slot').forEach(slot => {
+      const sel = slot.querySelector('.manual-product-select');
+      if (!sel) return;
+      const cur = (sel.value && sel.value !== 'MANUAL_INPUT') ? sel.value : '';
+      const tmp = document.createElement('div');
+      tmp.innerHTML = manualProductDropdownHtml(cat, used, cur);
+      sel.replaceWith(tmp.firstElementChild);
+    });
+  }
+
+  function starRatingHtml(uniqueId, nilai) {
+    return `
+      <div class="star-rating mb-2">
+        <input type="radio" name="r-${uniqueId}" value="3" id="3-${uniqueId}" ${nilai == '3' ? 'checked' : ''} onchange="saveProgress()"><label for="3-${uniqueId}"></label>
+        <input type="radio" name="r-${uniqueId}" value="2" id="2-${uniqueId}" ${nilai == '2' ? 'checked' : ''} onchange="saveProgress()"><label for="2-${uniqueId}"></label>
+        <input type="radio" name="r-${uniqueId}" value="1" id="1-${uniqueId}" ${nilai == '1' ? 'checked' : ''} onchange="saveProgress()"><label for="1-${uniqueId}"></label>
+      </div>`;
+  }
+
+  function addItemManual() {
     if (!MASTER_PRODUK || Object.keys(MASTER_PRODUK).length === 0) {
       Swal.fire("Sabar...", "Data produk belum siap, coba lagi dalam sedetik.", "warning");
       return;
     }
 
-    const counters = Object.keys(MASTER_PRODUK).sort();
-
-    const { value: selectedCounter } = await Swal.fire({
-      title: 'Pilih Counter',
-      input: 'select',
-      inputOptions: Object.fromEntries(counters.map(c => [c, c])),
-      inputPlaceholder: '-- Pilih Counter --',
-      showCancelButton: true,
-      confirmButtonColor: '#d6006e'
-    });
-
-    if (!selectedCounter) return;
-
-    const products = MASTER_PRODUK[selectedCounter].sort();
-    const { value: selectedProduct } = await Swal.fire({
-      title: `Produk di ${selectedCounter}`,
-      input: 'select',
-      inputOptions: {
-        ...Object.fromEntries(products.map(p => [p, p])),
-        'MANUAL_INPUT': '[ + ] KETIK NAMA MANUAL'
-      },
-      inputPlaceholder: '-- Pilih Menu --',
-      showCancelButton: true,
-      confirmButtonColor: '#d6006e'
-    });
-
-    if (!selectedProduct) return;
-
-    let finalProductName = selectedProduct;
-
-    if (selectedProduct === 'MANUAL_INPUT') {
-      const { value: manualName } = await Swal.fire({
-        title: 'Ketik Nama Produk',
-        input: 'text',
-        inputPlaceholder: 'Contoh: Nasi Goreng Spesial',
-        showCancelButton: true,
-        confirmButtonColor: '#d6006e'
-      });
-      if (!manualName) return;
-      finalProductName = manualName;
-    }
-
-    // Item yang ditambahkan lewat tombol ini SELALU ditandai sumber MANUAL,
-    // supaya nanti server tahu ini perlu disimpan balik ke pic_submissions.
-    renderNewItem(selectedCounter, finalProductName);
-
     const container = document.getElementById('item-container');
-    container.lastElementChild.scrollIntoView({ behavior: 'smooth' });
+    const itemCount = container.querySelectorAll('.item-row').length + 1;
+    const div = document.createElement('div');
+    div.className = 'item-row shadow-sm border-start border-primary border-4 manual-card';
+
+    const counters = Object.keys(MASTER_PRODUK).sort();
+    div.innerHTML = `
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <div class="fw-bold small text-primary">
+          <span class="text-dark">#${itemCount}</span> - <span class="manual-counter-label">Pilih counter...</span>
+          <span class="badge-manual">MANUAL</span>
+        </div>
+        <a href="javascript:void(0)" class="text-danger small" onclick="this.closest('.item-row').remove(); saveProgress(); updateNumbers();">Hapus</a>
+      </div>
+      <input type="hidden" class="item-source" value="MANUAL">
+      <div class="mb-2">
+        <label class="small text-muted" style="font-size:10px">Pilih Counter:</label>
+        <select class="form-select form-select-sm manual-counter-select" onchange="updateManualCounter(this)">
+          <option value="" disabled selected>-- Pilih Counter --</option>
+          ${counters.map(c => `<option value="${c}">${c}</option>`).join('')}
+        </select>
+      </div>
+      <div class="manual-slots"></div>
+      <button type="button" class="btn btn-outline-secondary btn-sm w-100 mt-1" onclick="addManualSlot(this)">+ Tambah Produk</button>
+    `;
+    container.appendChild(div);
+    updateNumbers();
+    div.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  function updateManualCounter(el) {
+    const card = el.closest('.item-row');
+    card.querySelector('.manual-counter-label').innerText = el.value;
+    card.querySelector('.manual-slots').innerHTML = '';
+    addManualSlot(card.querySelector('button[onclick^="addManualSlot"]'));
+  }
+
+  function addManualSlot(btn, skipRefresh) {
+    const card = btn.closest('.item-row');
+    const cat = card.querySelector('.manual-counter-select').value;
+    if (!cat) return alert('Pilih counter dulu!');
+    const uniqueId = Date.now() + Math.floor(Math.random() * 10000);
+    const slot = document.createElement('div');
+    slot.className = 'manual-slot border-top pt-2 mt-2';
+    slot.innerHTML = `
+      <div class="d-flex justify-content-end"><a href="javascript:void(0)" class="text-danger" style="font-size:11px" onclick="removeManualSlot(this)">✖ Hapus produk</a></div>
+      <div class="manual-product-area mb-1">${manualProductDropdownHtml(cat, manualSelectedInCard(card))}</div>
+      ${starRatingHtml(uniqueId, '3')}
+      <input type="text" class="form-control form-control-sm manual-comment" placeholder="Tambah catatan (opsional)..." oninput="saveProgress()">
+    `;
+    card.querySelector('.manual-slots').appendChild(slot);
+    if (!skipRefresh) refreshManualDropdowns(card);
+    saveProgress();
+  }
+
+  function removeManualSlot(el) {
+    const card = el.closest('.item-row');
+    el.closest('.manual-slot').remove();
+    refreshManualDropdowns(card);
+    saveProgress();
+  }
+
+  function updateManualProduct(el) {
+    const card = el.closest('.item-row');
+    if (el.value !== 'MANUAL_INPUT') {
+      refreshManualDropdowns(card);
+      saveProgress();
+      return;
+    }
+    el.closest('.manual-product-area').innerHTML = `
+      <div class="input-group input-group-sm">
+        <input type="text" class="form-control manual-product-manual" placeholder="Nama menu..." oninput="refreshManualDropdowns(this.closest('.item-row')); saveProgress();">
+        <button class="btn btn-outline-secondary" type="button" onclick="cancelManualSlotItem(this)">✖</button>
+      </div>`;
+    refreshManualDropdowns(card);
+  }
+
+  function cancelManualSlotItem(btn) {
+    const card = btn.closest('.item-row');
+    const cat = card.querySelector('.manual-counter-select').value;
+    btn.closest('.manual-product-area').innerHTML = manualProductDropdownHtml(cat, manualSelectedInCard(card));
+    refreshManualDropdowns(card);
+    saveProgress();
   }
 
   function refreshProductDropdown(row, category) {
@@ -248,22 +329,43 @@
     saveProgress();
   }
 
-  function saveProgress() {
+  function collectAllItems() {
     const items = [];
-    document.querySelectorAll('.item-row').forEach(row => {
-      const n = row.querySelector('.item-nama-val')?.value;
-      const c = row.querySelector('.item-counter')?.value;
-      const src = row.querySelector('.item-source')?.value || 'PIC';
-      if(n && n !== "MANUAL") {
-        items.push({
-          counter: c || "",
-          nama: n,
-          nilai: row.querySelector('input:checked')?.value || "3",
-          comment: row.querySelector('.item-comment')?.value || "",
-          source: src
+    document.querySelectorAll('#item-container .item-row').forEach(row => {
+      if (row.classList.contains('manual-card')) {
+        const c = row.querySelector('.manual-counter-select')?.value;
+        if (!c) return;
+        row.querySelectorAll('.manual-slot').forEach(slot => {
+          const sel = slot.querySelector('.manual-product-select');
+          const inp = slot.querySelector('.manual-product-manual');
+          let n = '';
+          if (inp) n = inp.value.trim();
+          else if (sel && sel.value !== 'MANUAL_INPUT') n = sel.value;
+          if (!n) return;
+          const r = slot.querySelector('input:checked')?.value || '3';
+          const com = slot.querySelector('.manual-comment')?.value || '';
+          items.push({ counter: c, nama: n, nilai: r, comment: com, source: 'MANUAL' });
         });
+      } else {
+        const n = row.querySelector('.item-nama-val')?.value;
+        const c = row.querySelector('.item-counter')?.value;
+        const src = row.querySelector('.item-source')?.value || 'PIC';
+        if (n && n !== 'MANUAL') {
+          items.push({
+            counter: c || '',
+            nama: n,
+            nilai: row.querySelector('input:checked')?.value || '3',
+            comment: row.querySelector('.item-comment')?.value || '',
+            source: src
+          });
+        }
       }
     });
+    return items;
+  }
+
+  function saveProgress() {
+    const items = collectAllItems();
     localStorage.setItem('testFoodDraft', JSON.stringify({
       tanggal: document.getElementById('tanggal').value,
       waktu: document.getElementById('waktu').value,
@@ -355,19 +457,7 @@
     const t = document.getElementById('tanggal').value;
     const w = document.getElementById('waktu').value;
     if(!t) return alert("Pilih tanggal!");
-    const items = [];
-    document.querySelectorAll('.item-row').forEach(row => {
-      const n = row.querySelector('.item-nama-val')?.value;
-      if(n && n !== "MANUAL") {
-        items.push({
-          counter: row.querySelector('.item-counter')?.value || "",
-          nama: n,
-          nilai: row.querySelector('input:checked')?.value || "3",
-          comment: row.querySelector('.item-comment')?.value || "",
-          source: row.querySelector('.item-source')?.value || 'PIC'
-        });
-      }
-    });
+    const items = collectAllItems();
     const res = await fetch('/api/tester/draft', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -398,19 +488,7 @@
   }
 
   async function kirimData(format, btnElement) {
-    const items = [];
-    document.querySelectorAll('.item-row').forEach(row => {
-      const n = row.querySelector('.item-nama-val')?.value;
-      if(n && n !== "MANUAL") {
-        items.push({
-          counter: row.querySelector('.item-counter').value,
-          nama: n,
-          nilai: row.querySelector('input:checked')?.value || "3",
-          comment: row.querySelector('.item-comment').value,
-          source: row.querySelector('.item-source')?.value || 'PIC'
-        });
-      }
-    });
+    const items = collectAllItems();
 
     if(!items.length || pad.isEmpty() || !document.getElementById('mod').value) {
       return alert("⚠️ Lengkapi data dan Tanda Tangan!");

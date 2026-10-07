@@ -30,6 +30,18 @@ export async function POST(req: Request) {
     rows.map((r: any) => ({ divisi: String(r.divisi || 'DELICA'), nama: r.nama_pic || '' }))
   );
 
+  const missingComments = (data.items || []).filter(
+    (item: any) => Number(item.nilai) < 3 && !String(item.comment || '').trim()
+  );
+  if (missingComments.length > 0) {
+    return Response.json({
+      success: false,
+      message: `Produk dengan nilai kurang dari 3 wajib diisi komentar: ${missingComments
+        .map((it: any) => `[${it.counter}] ${it.nama} (Nilai ${it.nilai})`)
+        .join(', ')}`,
+    });
+  }
+
   // Hapus record lama tanggal+shift yang sama, lalu insert baru (proteksi double input)
   await supabase.from('test_food_records').delete().eq('tanggal', data.tanggal).eq('waktu', data.waktu);
 

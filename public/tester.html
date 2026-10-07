@@ -172,12 +172,26 @@
     });
   }
 
+  function onRatingChange(radio) {
+    const slot = radio.closest('.manual-slot') || radio.closest('.item-row');
+    const commentInput = slot.querySelector('.manual-comment') || slot.querySelector('.item-comment');
+    if (!commentInput) return;
+    if (radio.value < 3) {
+      commentInput.classList.add('border-danger');
+      commentInput.placeholder = '⚠️ Wajib isi komentar (nilai < 3)';
+    } else {
+      commentInput.classList.remove('border-danger');
+      commentInput.placeholder = 'Tambah catatan (opsional)...';
+    }
+    saveProgress();
+  }
+
   function starRatingHtml(uniqueId, nilai) {
     return `
       <div class="star-rating mb-2">
-        <input type="radio" name="r-${uniqueId}" value="3" id="3-${uniqueId}" ${nilai == '3' ? 'checked' : ''} onchange="saveProgress()"><label for="3-${uniqueId}"></label>
-        <input type="radio" name="r-${uniqueId}" value="2" id="2-${uniqueId}" ${nilai == '2' ? 'checked' : ''} onchange="saveProgress()"><label for="2-${uniqueId}"></label>
-        <input type="radio" name="r-${uniqueId}" value="1" id="1-${uniqueId}" ${nilai == '1' ? 'checked' : ''} onchange="saveProgress()"><label for="1-${uniqueId}"></label>
+        <input type="radio" name="r-${uniqueId}" value="3" id="3-${uniqueId}" ${nilai == '3' ? 'checked' : ''} onchange="onRatingChange(this)"><label for="3-${uniqueId}"></label>
+        <input type="radio" name="r-${uniqueId}" value="2" id="2-${uniqueId}" ${nilai == '2' ? 'checked' : ''} onchange="onRatingChange(this)"><label for="2-${uniqueId}"></label>
+        <input type="radio" name="r-${uniqueId}" value="1" id="1-${uniqueId}" ${nilai == '1' ? 'checked' : ''} onchange="onRatingChange(this)"><label for="1-${uniqueId}"></label>
       </div>`;
   }
 
@@ -414,10 +428,10 @@
       <input type="hidden" class="item-nama-val" value="${item.nama}">
       <input type="hidden" class="item-counter" value="${item.counter}">
       <input type="hidden" class="item-source" value="${source}">
-      <div class="star-rating mb-2">
-        <input type="radio" name="r-${uniqueId}" value="3" id="3-${uniqueId}" ${item.nilai == '3' ? 'checked' : ''} onchange="saveProgress()"><label for="3-${uniqueId}"></label>
-        <input type="radio" name="r-${uniqueId}" value="2" id="2-${uniqueId}" ${item.nilai == '2' ? 'checked' : ''} onchange="saveProgress()"><label for="2-${uniqueId}"></label>
-        <input type="radio" name="r-${uniqueId}" value="1" id="1-${uniqueId}" ${item.nilai == '1' ? 'checked' : ''} onchange="saveProgress()"><label for="1-${uniqueId}"></label>
+       <div class="star-rating mb-2">
+        <input type="radio" name="r-${uniqueId}" value="3" id="3-${uniqueId}" ${item.nilai == '3' ? 'checked' : ''} onchange="onRatingChange(this)"><label for="3-${uniqueId}"></label>
+        <input type="radio" name="r-${uniqueId}" value="2" id="2-${uniqueId}" ${item.nilai == '2' ? 'checked' : ''} onchange="onRatingChange(this)"><label for="2-${uniqueId}"></label>
+        <input type="radio" name="r-${uniqueId}" value="1" id="1-${uniqueId}" ${item.nilai == '1' ? 'checked' : ''} onchange="onRatingChange(this)"><label for="1-${uniqueId}"></label>
       </div>
       <input type="text" class="form-control form-control-sm item-comment" placeholder="Komentar..." value="${item.comment || ''}" oninput="saveProgress()">
     `;
@@ -492,6 +506,12 @@
 
     if(!items.length || pad.isEmpty() || !document.getElementById('mod').value) {
       return alert("⚠️ Lengkapi data dan Tanda Tangan!");
+    }
+
+    const missingComments = items.filter(it => Number(it.nilai) < 3 && !String(it.comment || '').trim());
+    if (missingComments.length > 0) {
+      const list = missingComments.map(it => `• [${it.counter}] ${it.nama} (Nilai ${it.nilai})`).join('\n');
+      return alert(`⚠️ Produk dengan nilai kurang dari 3 wajib diisi komentar:\n\n${list}`);
     }
 
     const originalText = btnElement.innerHTML;

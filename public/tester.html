@@ -40,11 +40,11 @@
       <label class="small fw-bold">Penanggung Jawab (MOD)</label>
       <select id="mod" class="form-select">
         <option value="" disabled selected>Pilih MOD...</option>
-        <option value="Riza Teguh Iman S.">Riza Teguh Iman S.</option>
-        <option value="Alfian Lazuwurdhy">Alfian Lazuwurdhy</option>
-        <option value="Rizki Setiawan">Rizki Setiawan</option>
-        <option value="Aryandhi Purnomo A.">Aryandhi Purnomo A.</option>
-        <option value="A. Yoma Ardita Putri">A. Yoma Ardita Putri</option>
+        <option value="Riza Teguh Iman S." data-salutation="Pak">Riza Teguh Iman S.</option>
+        <option value="Alfian Lazuwurdhy" data-salutation="Pak">Alfian Lazuwurdhy</option>
+        <option value="Rizki Setiawan" data-salutation="Pak">Rizki Setiawan</option>
+        <option value="Aryandhi Purnomo A." data-salutation="Pak">Aryandhi Purnomo A.</option>
+        <option value="A. Yoma Ardita Putri" data-salutation="Bu">A. Yoma Ardita Putri</option>
       </select>
     </div>
 
@@ -473,11 +473,14 @@
     const w = document.getElementById('waktu').value;
     if(!t) return alert("Pilih tanggal!");
     const items = collectAllItems();
+    const modEl = document.getElementById('mod');
+    const modSalutation = modEl.options[modEl.selectedIndex].getAttribute('data-salutation') || 'Pak';
+
     const res = await fetch('/api/tester/draft', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        tanggal: t, waktu: w, mod: document.getElementById('mod').value,
+        tanggal: t, waktu: w, mod: document.getElementById('mod').value, modSalutation,
         testers: [document.getElementById('tester1').value, document.getElementById('tester2').value, document.getElementById('tester3').value, document.getElementById('tester4').value],
         items: items
       })
@@ -521,7 +524,9 @@
 
     try {
       const modSignatureUrl = localStorage.getItem('modSignatureUrl') || null;
-      
+      const modSelect = document.getElementById('mod');
+      const modSalutation = modSelect.options[modSelect.selectedIndex].getAttribute('data-salutation') || 'Pak';
+
       const res = await fetch('/api/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -530,6 +535,7 @@
           tanggal: document.getElementById('tanggal').value,
           waktu: document.getElementById('waktu').value,
           mod: document.getElementById('mod').value,
+          modSalutation,
           testers: [document.getElementById('tester1').value, document.getElementById('tester2').value, document.getElementById('tester3').value, document.getElementById('tester4').value],
           items: items,
           sigModUrl: modSignatureUrl

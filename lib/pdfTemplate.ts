@@ -225,7 +225,7 @@ export async function generatePdfFromTemplate(
   const valueRanges: { range: string; values: any[][] }[] = [
     { range: 'Template_PDF!B2', values: [[data.tanggal]] },
     { range: 'Template_PDF!E3', values: [[data.waktu === 'PAGI' ? '09:00 - 10:00' : '16:00 - 17:00']] },
-    { range: 'Template_PDF!B4', values: [[`Pak ${data.mod || ''}`]] },
+      { range: 'Template_PDF!B4', values: [[`${data.modSalutation === 'Bu' ? 'Bu' : 'Pak'} ${data.mod || ''}`]] },
     { range: 'Template_PDF!H2', values: [[`1. ${data.testers?.[0] || ''}`]] },
     { range: 'Template_PDF!I2', values: [[`2. ${data.testers?.[1] || ''}`]] },
     { range: 'Template_PDF!H3', values: [[`3. ${data.testers?.[2] || ''}`]] },

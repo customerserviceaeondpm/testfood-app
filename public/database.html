@@ -172,6 +172,23 @@
     }
   }
 
+  const DATE_COLS = ['updated_at', 'created_at', 'submitted_at'];
+
+  function formatJakarta(val) {
+    if (!val) return '<span class="text-muted">-</span>';
+    try {
+      const d = new Date(val);
+      if (isNaN(d.getTime())) return String(val);
+      return d.toLocaleString('id-ID', {
+        timeZone: 'Asia/Jakarta',
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      }).replace(',', '') + ' WIB';
+    } catch {
+      return String(val);
+    }
+  }
+
   function renderTable(rows, totalCount) {
     const container = document.getElementById('tableContainer');
     if (!rows || rows.length === 0) {
@@ -190,8 +207,12 @@
         let val = r[c];
         if (typeof val === 'object' && val !== null) {
           val = `<button class="btn btn-xs btn-outline-secondary py-0 px-1" style="font-size:10px;" onclick='showJson(${JSON.stringify(JSON.stringify(val))})'>Lihat JSON</button>`;
+        } else if (c === 'signature_url' && typeof val === 'string' && val.startsWith('http')) {
+          val = `<a href="${val}" target="_blank"><img src="${val}" style="height:48px;max-width:120px;object-fit:contain;background:#fff;border:1px solid #e2e8f0;border-radius:6px;" loading="lazy" onerror="this.outerHTML='<a href=&quot;${val}&quot; target=&quot;_blank&quot; style=&quot;font-size:11px;&quot;>Buka Link</a>'"></a>`;
         } else if (typeof val === 'string' && val.startsWith('http')) {
           val = `<a href="${val}" target="_blank" style="font-size:11px;">Buka Link</a>`;
+        } else if (DATE_COLS.includes(c)) {
+          val = formatJakarta(val);
         } else if (val === null) {
           val = '<span class="text-muted">-</span>';
         } else {

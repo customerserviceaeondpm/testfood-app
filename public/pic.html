@@ -92,15 +92,28 @@
 
   window.onload = async () => {
     resizeCanvas();
+    currentDivisi = document.getElementById('divisiPic').value;
     // Memanggil data master produk agar dropdown muncul
     try {
       const res = await fetch('/api/products');
       MASTER_PRODUK = await res.json();
-      addItem();
+      const d = document.getElementById('divisiPic').value;
+      if (localStorage.getItem(`picDraft_${d}`)) {
+        loadDraft();
+      } else {
+        addItem();
+      }
     } catch (err) {
       console.error('Gagal ambil master:', err);
     }
   };
+
+  document.addEventListener('input', (e) => {
+    if (e.target.closest('#item-container') || e.target.id === 'namaPic') saveDraft();
+  });
+  document.addEventListener('change', (e) => {
+    if (e.target.closest('#item-container') || ['tanggal','shiftPic','namaPic','divisiPic'].includes(e.target.id)) saveDraft();
+  });
 
   function productDropdownHtml(cat, exclude = [], keep = '') {
     const used = new Set(exclude.map(v => String(v).trim().toLowerCase()));
@@ -153,10 +166,95 @@
     return only.filter(c => MASTER_PRODUK[c]);
   }
 
-  function onDivisiChange() {
+  let currentDivisi = 'DELICA';
+
+  function saveDraft(divisiOverride) {
+    const items = [];
+    document.querySelectorAll('.item-row').forEach(row => {
+      const c = row.querySelector('.counter-select').value;
+      if (!c) return;
+      row.querySelectorAll('.product-slot').forEach(slot => {
+        const sel = slot.querySelector('.product-select');
+        const inp = slot.querySelector('.product-manual');
+        let n = "";
+        if (inp) n = inp.value.trim();
+        else if (sel && sel.value !== 'MANUAL_INPUT') n = sel.value;
+        if (n && n !== "MANUAL") items.push({ counter: c, nama: n });
+      });
+    });
+
+    const d = divisiOverride || document.getElementById('divisiPic').value;
+    localStorage.setItem(`picDraft_${d}`, JSON.stringify({
+      tanggal: document.getElementById('tanggal').value,
+      shift: document.getElementById('shiftPic').value,
+      nama: document.getElementById('namaPic').value,
+      items: items,
+      signatureUrl: picSignatureUrl
+    }));
+  }
+
+  function loadDraft() {
+    const d = document.getElementById('divisiPic').value;
+    const saved = localStorage.getItem(`picDraft_${d}`);
+    if (!saved) return;
+    const data = JSON.parse(saved);
+    if(data.tanggal) document.getElementById('tanggal').value = data.tanggal;
+    if(data.shift) document.getElementById('shiftPic').value = data.shift;
+    if(data.nama) document.getElementById('namaPic').value = data.nama;
+    picSignatureUrl = data.signatureUrl;
+    if (picSignatureUrl) {
+      document.getElementById('padPIC').style.display = 'block';
+      document.getElementById('sigPlaceholder').style.display = 'none';
+    }
     document.getElementById('item-container').innerHTML = '';
-    addItem();
-    loadDivisiData();
+    const groups = {};
+    (data.items || []).forEach(it => {
+      if (!groups[it.counter]) groups[it.counter] = [];
+      groups[it.counter].push(it.nama);
+    });
+    const counters = Object.keys(groups);
+    if (counters.length === 0) { addItem(); return; }
+    counters.forEach(c => {
+      addItem(c);
+      const row = document.getElementById('item-container').lastElementChild;
+      const names = groups[c];
+      names.forEach((n, i) => {
+        if (i > 0) addProductSlot(row.querySelector('.add-product-btn'), true);
+        const slot = row.querySelectorAll('.product-slot')[i];
+        if (!slot) return;
+        const sel = slot.querySelector('.product-select');
+        if (sel) {
+          const opt = Array.from(sel.options).find(o => o.value === n);
+          if (opt) sel.value = n;
+          else {
+            slot.innerHTML = `<input type="text" class="form-control product-manual" value="${n.replace(/"/g, '&quot;')}" oninput="saveDraft()">
+              <button class="btn btn-outline-danger" type="button" onclick="removeProductSlot(this)">✖</button>`;
+          }
+        } else {
+          const inp = slot.querySelector('.product-manual');
+          if (inp) inp.value = n;
+        }
+      });
+      refreshCardDropdowns(row);
+    });
+  }
+
+  function onDivisiChange() {
+    saveDraft(currentDivisi);
+    currentDivisi = document.getElementById('divisiPic').value;
+    document.getElementById('item-container').innerHTML = '';
+    picSignatureUrl = null;
+    signaturePad.clear();
+    document.getElementById('padPIC').style.display = 'none';
+    document.getElementById('sigPlaceholder').style.display = 'block';
+
+    const d = document.getElementById('divisiPic').value;
+    if (localStorage.getItem(`picDraft_${d}`)) {
+      loadDraft();
+    } else {
+      addItem();
+      loadDivisiData();
+    }
   }
 
   async function loadDivisiData() {
@@ -240,12 +338,13 @@
     if (presetCounter) addProductSlot(div.querySelector('.add-product-btn'), true);
   }
 
-function removeItem(el) {
+  function removeItem(el) {
     el.closest('.item-row').remove();
     // Re-index nomor setelah dihapus
     document.querySelectorAll('#item-container .badge').forEach((badge, index) => {
       badge.innerText = 'COUNTER #' + (index + 1);
     });
+    saveDraft();
   }
 
   function updateByCounter(el) {
@@ -254,6 +353,7 @@ function removeItem(el) {
     const cat = el.value;
     slots.innerHTML = '';
     addProductSlot(row.querySelector('.add-product-btn'));
+    saveDraft();
   }
 
   function addProductSlot(btn, skipRefresh) {
@@ -264,7 +364,7 @@ function removeItem(el) {
     const slot = document.createElement('div');
     slot.className = 'product-slot input-group input-group-sm mb-1';
     if (cat === "OTHERS") {
-      slot.innerHTML = `<input type="text" class="form-control product-manual" placeholder="Ketik Nama Produk...">
+      slot.innerHTML = `<input type="text" class="form-control product-manual" placeholder="Ketik Nama Produk..." oninput="saveDraft()">
         <button class="btn btn-outline-danger" type="button" onclick="removeProductSlot(this)">✖</button>`;
     } else {
       slot.innerHTML = `${productDropdownHtml(cat, selectedInCard(row))}
@@ -272,24 +372,28 @@ function removeItem(el) {
     }
     slots.appendChild(slot);
     if (!skipRefresh) refreshCardDropdowns(row);
+    saveDraft();
   }
 
   function removeProductSlot(btn) {
     const row = btn.closest('.item-row');
     btn.closest('.product-slot').remove();
     refreshCardDropdowns(row);
+    saveDraft();
   }
 
   function updateByProduct(el) {
     const row = el.closest('.item-row');
     if (el.value !== "MANUAL") {
       refreshCardDropdowns(row);
+      saveDraft();
       return;
     }
     const slot = el.closest('.product-slot');
-    slot.innerHTML = `<input type="text" class="form-control product-manual" placeholder="Nama menu..." oninput="refreshCardDropdowns(this.closest('.item-row'))">
+    slot.innerHTML = `<input type="text" class="form-control product-manual" placeholder="Nama menu..." oninput="refreshCardDropdowns(this.closest('.item-row')); saveDraft();">
       <button class="btn btn-outline-secondary" type="button" onclick="cancelManual(this)">✖</button>`;
     refreshCardDropdowns(row);
+    saveDraft();
   }
 
   function cancelManual(btn) {
@@ -297,13 +401,14 @@ function removeItem(el) {
     const cat = row.querySelector('.counter-select').value;
     const slot = btn.closest('.product-slot');
     if (cat === "OTHERS" || !cat) {
-      slot.innerHTML = `<input type="text" class="form-control form-control-sm product-manual" placeholder="Ketik Nama Produk...">
+      slot.innerHTML = `<input type="text" class="form-control form-control-sm product-manual" placeholder="Ketik Nama Produk..." oninput="saveDraft()">
         <button class="btn btn-outline-danger" type="button" onclick="removeProductSlot(this)">✖</button>`;
     } else {
       slot.innerHTML = `${productDropdownHtml(cat, selectedInCard(row))}
         <button class="btn btn-outline-danger" type="button" onclick="removeProductSlot(this)">✖</button>`;
     }
     refreshCardDropdowns(row);
+    saveDraft();
   }
 
   async function simpanData() {
@@ -352,7 +457,11 @@ function removeItem(el) {
       }).then(r => r.json());
 
       alert(res);
-      if (res.includes && res.includes("Berhasil")) location.reload();
+      if (res.includes && res.includes("Berhasil")) {
+        const d = document.getElementById('divisiPic').value;
+        localStorage.removeItem(`picDraft_${d}`);
+        location.reload();
+      }
       else { btn.disabled = false; btn.innerHTML = "SIMPAN DATA"; }
     } catch (err) {
       alert("❌ Error: " + err.toString());
@@ -443,6 +552,7 @@ function removeItem(el) {
 
       if (res.success) {
         picSignatureUrl = res.url;
+        saveDraft();
         document.getElementById('padPIC').style.display = 'block';
         document.getElementById('sigPlaceholder').style.display = 'none';
         savedAlert.className = 'alert alert-success alert-dismissible fade show position-fixed';
